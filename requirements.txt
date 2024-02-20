@@ -2,3 +2,5 @@ fashion-clip
 kaggle
 wandb
 scikit-learn
+git-lfs
+huggingface_hub
