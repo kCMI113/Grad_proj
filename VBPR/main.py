@@ -4,6 +4,7 @@ import wandb
 import torch
 from torch.utils.data import DataLoader
 from torch.optim import Adam, lr_scheduler
+from huggingface_hub import snapshot_download
 from src.utils import seed_everything, get_config, get_timestamp, load_pickle, mk_dir
 from src.model import VBPR, BPRLoss, BPRMF
 from src.dataset import HMTestDataset, HMTrainDataset
@@ -38,14 +39,22 @@ def main():
     sample_size = wandb.config.sample_size
     model_name = wandb.config.model
     emb_norm = wandb.config.emb_norm
+    data_local = wandb.config.data_local
+    data_version = wandb.config.data_version # if you call data from local then set "local"
     
     ############# LOAD DATASET #############
+    # when calling data from huggingFace Hub
+    if not data_local:
+        path = snapshot_download(repo_id="SLKpnu/HandM_Dataset", repo_type="dataset", cache_dir = ".") + "/" + data_version
+    else:
+        path = f"./data/{data_version}"
+
     print("-------------LOAD IMAGE EMBEDDING-------------")
-    img_emb = torch.tensor(load_pickle("./data/img_emb_small.pkl"))
+    img_emb = torch.tensor(load_pickle(f"{path}/img_emb_small.pkl"))
     print("-------------LOAD DATASET-------------")
-    train_dataset = torch.load("./dataset/train_dataset_small.pt")
-    test_dataset = torch.load("./dataset/test_dataset_small.pt")
-    candidate_items_each_user = load_pickle("./data/candidate_items_each_user_small.pkl")
+    train_dataset = torch.load(f"{path}/train_dataset_small.pt")
+    test_dataset = torch.load(f"{path}/test_dataset_small.pt")
+    candidate_items_each_user = load_pickle(f"{path}/candidate_items_each_user_small.pkl")
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4)
 
     ############# SETTING FOR TRAIN #############

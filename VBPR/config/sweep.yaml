@@ -7,24 +7,28 @@ metric:
 parameters: 
     dataset:
         value : "small"
+    data_local:
+        value : False
+    data_version:
+        value: "20182752"
     model:
-        value : "VBPR"
+        value : "MF"
     emb_norm:
         value: "None"
     sample_size:
         values : [500]
     batch_size: 
-        values: [512] 
+        values: [1024] 
     epoch: 
         values: [100]
     lr: 
-        values: [0.0000005]
+        values: [0.0000001]
     K: 
-        values: [20]
+        values: [20, 40]
     D: 
-        values: [20]
+        values: [64]
     reg_theta: 
-        values: [0.001]
+        values: [0.001, 0.01]
     reg_beta: 
         values: [0.001]
     reg_e:
