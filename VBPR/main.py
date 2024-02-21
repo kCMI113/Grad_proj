@@ -7,7 +7,7 @@ from torch.optim import Adam, lr_scheduler
 from huggingface_hub import snapshot_download
 from src.utils import seed_everything, get_config, get_timestamp, load_pickle, mk_dir
 from src.model import VBPR, BPRLoss, BPRMF
-from src.dataset import HMTestDataset, HMTrainDataset
+from src.dataset import HMTestDataset, HMDataset
 from src.train import train, eval
 
 def main():
@@ -21,41 +21,60 @@ def main():
     name = f"work-{timestamp}"
 
     ############ WANDB INIT #############
-    print("--------------- Wandb SETTING ---------------")
-    dotenv.load_dotenv()
-    WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
-    wandb.login(key=WANDB_API_KEY)
-    run = wandb.init(project="MMRec", name=name, config=config)
+    # print("--------------- Wandb SETTING ---------------")
+    # dotenv.load_dotenv()
+    # WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
+    # wandb.login(key=WANDB_API_KEY)
+    # run = wandb.init(project="MMRec", name=name, config=config)
 
     ############ SET HYPER PARAMS #############
-    K = wandb.config.K
-    D = wandb.config.D
-    reg_theta = wandb.config.reg_theta
-    reg_beta = wandb.config.reg_beta
-    reg_e = wandb.config.reg_e
-    lr = wandb.config.lr
-    epoch = wandb.config.epoch
-    batch_size = wandb.config.batch_size   
-    sample_size = wandb.config.sample_size
-    model_name = wandb.config.model
-    emb_norm = wandb.config.emb_norm
-    data_local = wandb.config.data_local
-    data_version = wandb.config.data_version # if you call data from local then set "local"
+    # K = wandb.config.K
+    # D = wandb.config.D
+    # reg_theta = wandb.config.reg_theta
+    # reg_beta = wandb.config.reg_beta
+    # reg_e = wandb.config.reg_e
+    # lr = wandb.config.lr
+    # epoch = wandb.config.epoch
+    # batch_size = wandb.config.batch_size   
+    # sample_size = wandb.config.sample_size
+    # model_name = wandb.config.model
+    # emb_norm = wandb.config.emb_norm
+    # data_local = wandb.config.data_local
+    # dataset = wandb.config.data_version
+    
+    K = 20
+    D = 20
+    reg_theta = 0.01
+    reg_beta = 0.01
+    reg_e = 0.01
+    lr = 0.01
+    epoch = 2
+    batch_size = 1024
+    sample_size = 1000
+    model_name = "VBPR"
+    emb_norm = "None"
+    data_local = False
+    dataset = "small"
+    data_version = "680b700f4bd0be4dd59cbb9ad687f4615a66df6c" # commit hash of data version
     
     ############# LOAD DATASET #############
     # when calling data from huggingFace Hub
     if not data_local:
-        path = snapshot_download(repo_id="SLKpnu/HandM_Dataset", repo_type="dataset", cache_dir = ".") + "/" + data_version
+        path = snapshot_download(repo_id="SLKpnu/HandM_Dataset", repo_type="dataset", cache_dir = "./data", revision=data_version) + "/" + dataset
     else:
-        path = f"./data/{data_version}"
+        path = f"./data/{dataset}"
 
-    print("-------------LOAD IMAGE EMBEDDING-------------")
+    print("-------------LOAD DATA-------------")
     img_emb = torch.tensor(load_pickle(f"{path}/img_emb_small.pkl"))
-    print("-------------LOAD DATASET-------------")
-    train_dataset = torch.load(f"{path}/train_dataset_small.pt")
-    test_dataset = torch.load(f"{path}/test_dataset_small.pt")
     candidate_items_each_user = load_pickle(f"{path}/candidate_items_each_user_small.pkl")
+    
+    train_dataset = torch.load(f"{path}/train_dataset_small.pt")
+    valid_dataset = torch.load(f"{path}/valid_dataset_small.pt")
+    test_dataset = torch.load(f"{path}/test_dataset_small.pt")
+    
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=4)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=512, num_workers=4)
+    test_dataloader = DataLoader(test_dataset, batch_size=512, num_workers=4)
 
     ############# SETTING FOR TRAIN #############
     n_user = len(test_dataset)
@@ -74,17 +93,24 @@ def main():
     scheduler = lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch : 0.85**epoch)
     
     ############# TRAIN AND EVAL #############
-    print("-------------TRAINING-------------")
     for i in range(epoch):
+        print("-------------TRAIN-------------")
         train_loss = train(model, optimizer, scheduler, train_dataloader, criterion, device)
-        print(f'EPOCH : {i+1} | LOSS : {train_loss} | lr : {optimizer.param_groups[0]["lr"]}')
-        wandb.log({"loss":train_loss, "epoch": i+1, "lr": optimizer.param_groups[0]["lr"]})
+        print(f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups[0]["lr"]}')
+        wandb.log({"loss":train_loss, "epoch":i+1, "lr":optimizer.param_groups[0]["lr"]})
         
         if i%3 == 0:
-            metrics = eval(model, test_dataset, candidate_items_each_user, device)
-            print(f'R10 : {metrics["R10"]} | R20 : {metrics["R20"]} | R40 : {metrics["R40"]} | N10 : {metrics["N10"]} | N20 : {metrics["N20"]} | N40 : {metrics["N40"]}')
-            wandb.log(metrics)
+            print("-------------VALID-------------")
+            valid_loss, valid_metrics = eval(model, "valid", sample_size, valid_dataloader, criterion, candidate_items_each_user, device)
+            print(f'EPOCH : {i+1} | VALID LOSS : {valid_loss}')
+            print(f'R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | N10 : {valid_metrics["N10"]} | N20 : {valid_metrics["N20"]} | N40 : {valid_metrics["N40"]}')
+            wandb.log({"valid_loss":valid_loss, "valid_R10":valid_metrics["R10"], "valid_R20":valid_metrics["R20"], "valid_R40":valid_metrics["R40"], "valid_N10":valid_metrics["N10"], "valid_N20":valid_metrics["N20"], "valid_N40":valid_metrics["N40"],})
 
+    print("-------------TEST-------------")
+    test_metrics = eval(model, "test", sample_size, test_dataloader, criterion, candidate_items_each_user, device)
+    print(f'R10 : {test_metrics["R10"]} | R20 : {test_metrics["R20"]} | R40 : {test_metrics["R40"]} | N10 : {test_metrics["N10"]} | N20 : {test_metrics["N20"]} | N40 : {test_metrics["N40"]}')
+    wandb.log(test_metrics)
+    
     ############# WANDB FINISH & SAVING FILES #############
     wandb.save(config_path)
     wandb.finish()
