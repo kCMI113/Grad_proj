@@ -2,15 +2,6 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from src.utils import recall_at_k, ndcg_at_k
-from src.dataset import HMDataset
-
-def parmas_indexing(params, idx, batch_size):
-    new_param = []
-    for param in params:
-        if param.shape[0] > batch_size:
-            param = param[idx]
-        new_param.append(param)
-    return new_param
 
 def train(model, optimizer, scheduler, dataloader, criterion, device):
     model.train()
@@ -43,8 +34,13 @@ def eval(model, mode, sample_size, dataloader, criterion, candidate_items_each_u
         for user, *args in tqdm(dataloader):
             if mode == "valid":
                 target, neg = args
+                user = user.to(device)
                 target = target.to(device)
                 neg = neg.to(device)
+                # get loss
+                diff, pos_params, neg_params = model(user, target, neg)
+                loss = criterion(diff, pos_params, neg_params)
+                total_loss += loss.item()
 
             if mode == "test":
                 target = args[0].to(device)
@@ -63,7 +59,7 @@ def eval(model, mode, sample_size, dataloader, criterion, candidate_items_each_u
             
             # dim : batch_size * (sample_size+1)
             # e.g. bc:512, sample:1000 => dim:512512
-            candidate_out, candidate_parms = model.cal_each(users, candidate_items) 
+            candidate_out, _ = model.cal_each(users, candidate_items) 
 
             for i, t in enumerate(target):
                 idx = target_idx[i] + 1
@@ -81,14 +77,6 @@ def eval(model, mode, sample_size, dataloader, criterion, candidate_items_each_u
                 for k in [10, 20, 40]:
                     metrics['R' + str(k)].append(recall_at_k(k, t, sorted_item))
                     metrics['N' + str(k)].append(ndcg_at_k(k, t, sorted_item))
-                        
-            # get loss
-            if mode == "valid":
-                neg_out, neg_params = model.cal_each(user, neg)
-                pos_out = candidate_out[target_idx[:user.shape[0]]]
-                pos_params = parmas_indexing(candidate_parms, target_idx[:user.shape[0]], dataloader.batch_size)
-                loss = criterion(pos_out-neg_out, pos_params, neg_params)
-                total_loss += loss.item()
               
         for k in [10, 20, 40]:
             metrics['R' + str(k)] = round(np.asarray(metrics['R' + str(k)]).mean(), 5)   
