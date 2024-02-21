@@ -3,7 +3,7 @@ import random
 from tqdm import tqdm 
 from torch.utils.data import Dataset
 
-class HMTrainDataset(Dataset):
+class HMDataset(Dataset):
     def __init__(self, df, item_df, items_by_prod_type, pos_items_each_user) -> None:
         super().__init__()
         self.df = df
