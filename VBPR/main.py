@@ -90,7 +90,7 @@ def main():
             valid_loss, valid_metrics = eval(model, "valid", sample_size, valid_dataloader, criterion, candidate_items_each_user, device)
             print(f'EPOCH : {i+1} | VALID LOSS : {valid_loss}')
             print(f'R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | N10 : {valid_metrics["N10"]} | N20 : {valid_metrics["N20"]} | N40 : {valid_metrics["N40"]}')
-            wandb.log({"valid_loss":valid_loss, "valid_R10":valid_metrics["R10"], "valid_R20":valid_metrics["R20"], "valid_R40":valid_metrics["R40"], "valid_N10":valid_metrics["N10"], "valid_N20":valid_metrics["N20"], "valid_N40":valid_metrics["N40"],})
+            wandb.log({"epoch":i+1, "valid_loss":valid_loss, "valid_R10":valid_metrics["R10"], "valid_R20":valid_metrics["R20"], "valid_R40":valid_metrics["R40"], "valid_N10":valid_metrics["N10"], "valid_N20":valid_metrics["N20"], "valid_N40":valid_metrics["N40"],})
 
     print("-------------TEST-------------")
     test_metrics = eval(model, "test", sample_size, test_dataloader, criterion, candidate_items_each_user, device)
