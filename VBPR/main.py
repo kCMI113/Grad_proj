@@ -14,51 +14,37 @@ def main():
     ############# SETTING #############
     seed_everything()
     mk_dir("./model")
-    mk_dir("./data/res")
+    mk_dir("./data")
     config_path = "./config/sweep.yaml"
     config = get_config(config_path)
     timestamp = get_timestamp()
     name = f"work-{timestamp}"
 
     ############ WANDB INIT #############
-    # print("--------------- Wandb SETTING ---------------")
-    # dotenv.load_dotenv()
-    # WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
-    # wandb.login(key=WANDB_API_KEY)
-    # run = wandb.init(project="MMRec", name=name, config=config)
+    print("--------------- Wandb SETTING ---------------")
+    dotenv.load_dotenv()
+    WANDB_API_KEY = os.environ.get("WANDB_API_KEY")
+    wandb.login(key=WANDB_API_KEY)
+    run = wandb.init(project="MMRec", name=name, config=config)
 
     ############ SET HYPER PARAMS #############
-    # K = wandb.config.K
-    # D = wandb.config.D
-    # reg_theta = wandb.config.reg_theta
-    # reg_beta = wandb.config.reg_beta
-    # reg_e = wandb.config.reg_e
-    # lr = wandb.config.lr
-    # epoch = wandb.config.epoch
-    # batch_size = wandb.config.batch_size   
-    # sample_size = wandb.config.sample_size
-    # model_name = wandb.config.model
-    # emb_norm = wandb.config.emb_norm
-    # data_local = wandb.config.data_local
-    # dataset = wandb.config.data_version
-    
-    K = 20
-    D = 20
-    reg_theta = 0.01
-    reg_beta = 0.01
-    reg_e = 0.01
-    lr = 0.01
-    epoch = 2
-    batch_size = 1024
-    sample_size = 1000
-    model_name = "VBPR"
-    emb_norm = "None"
-    data_local = False
-    dataset = "small"
-    data_version = "680b700f4bd0be4dd59cbb9ad687f4615a66df6c" # commit hash of data version
-    
+    K = wandb.config.K
+    D = wandb.config.D
+    reg_theta = wandb.config.reg_theta
+    reg_beta = wandb.config.reg_beta
+    reg_e = wandb.config.reg_e
+    lr = wandb.config.lr
+    epoch = wandb.config.epoch
+    batch_size = wandb.config.batch_size   
+    sample_size = wandb.config.sample_size
+    model_name = wandb.config.model
+    emb_norm = wandb.config.emb_norm
+    data_local = wandb.config.data_local
+    dataset = wandb.config.dataset
+    data_version = wandb.config.data_version
+
     ############# LOAD DATASET #############
-    # when calling data from huggingFace Hub
+    # when calling data from huggingface Hub
     if not data_local:
         path = snapshot_download(repo_id="SLKpnu/HandM_Dataset", repo_type="dataset", cache_dir = "./data", revision=data_version) + "/" + dataset
     else:
