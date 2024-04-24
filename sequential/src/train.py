@@ -21,9 +21,11 @@ def train(model, optimizer, scheduler, dataloader, criterion, device):
             logits = model(tokens)
 
         if isinstance(criterion, (BPRLoss)):
+            not_zero= torch.where(labels!=0)
+            target_dist= logits[not_zero]
             pos_score = torch.gather(logits, -1, labels.unsqueeze(-1))
             neg_score = torch.gather(logits, -1, negs)                 #unsqueeze 안 써도됨.
-            loss = criterion(pos_score, neg_score, model.parameters())
+            loss = criterion(pos_score, neg_score,target_dist, model.parameters())
         if isinstance(criterion, (nn.CrossEntropyLoss)):
             logits = logits.view(-1, logits.size(-1))
             labels = labels.view(-1)
@@ -68,9 +70,11 @@ def eval(
                 logits = model(tokens)
             if mode == "valid":
                 if isinstance(criterion, (BPRLoss)):
+                    not_zero= torch.where(labels!=0)
+                    target_dist= logits[not_zero]
                     pos_score = torch.gather(logits, -1, labels.unsqueeze(-1))
                     neg_score = torch.gather(logits, -1, negs)                 #unsqueeze 안 써도됨.
-                    loss = criterion(pos_score, neg_score, model.parameters())
+                    loss = criterion(pos_score, neg_score,target_dist, model.parameters())
                 if isinstance(criterion, (nn.CrossEntropyLoss)):
                     loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
