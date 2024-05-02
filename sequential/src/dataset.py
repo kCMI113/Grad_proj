@@ -81,10 +81,15 @@ class BERTDataset(Dataset):
         tokens = torch.tensor(tokens, dtype=torch.long)
         labels = torch.tensor(labels, dtype=torch.long)
         tokens = zero_padding1d(tokens)
-        labels = zero_padding1d(tokens)
+        labels = zero_padding1d(labels)
         
-        modal_emb = torch.stack(img_emb, dtype=torch.float64)
+        img_emb = img_emb[-self.max_len :]
+        modal_emb = torch.stack(img_emb)
+        modal_emb.type(torch.float64)
         modal_emb = zero_padding2d(modal_emb)
+
+        
+        
 
         return (
             tokens,
@@ -153,6 +158,7 @@ class BERTTestDataset(BERTDataset):
 
         img_emb.append(self.gen_img_emb[self.user_seq[index][-1]][np.random.randint(3)])
         modal_emb = torch.tensor(img_emb, dtype=torch.float64)
+        modal_emb = modal_emb[-self.max_len:,:]
         modal_emb = zero_padding2d(modal_emb)
         
 

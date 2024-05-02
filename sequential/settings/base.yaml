@@ -5,9 +5,10 @@ experiment_name: "refactor_test_BPR"
 # Model settings
 model_name: "BERT4Rec"
 model_arguments:
-  hidden_size: 256        # hidden size for multi head attention
+  hidden_size: 512       # hidden size for multi head attention
   num_attention_heads: 4  # number of heads for multi head attention
-  num_hidden_layers: 4    # number of transformer layers
+  num_encoder_layers: 3    # number of transformer layers
+  num_decoder_layers: 3
   max_len: 90             # length of input sequence
   dropout_prob: 0.2       # dropout probability
   num_mlp_layers: 3       # number of mlp layers
@@ -28,7 +29,7 @@ neg_sampling : False      # True if use negative sampling
 
 lr: 0.001
 epoch: 50
-batch_size: 64
+batch_size: 32
 weight_decay: 0.001 # weight decay for Adam
 num_workers: 0
 valid_step: 1 # number of steps to run validation
