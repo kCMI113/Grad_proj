@@ -7,14 +7,32 @@ import torch.nn as nn
 from .common import MultiHeadAttention, PositionwiseFeedForward
 
 
-class BERT4RecBlock(nn.Module):
+class EncoderBlock(nn.Module):
     def __init__(self, num_attention_heads, hidden_size, dropout_prob, hidden_act="gelu"):
-        super(BERT4RecBlock, self).__init__()
+        super().__init__()
         self.attention = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
         self.pointwise_feedforward = PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
 
     def forward(self, input_enc, mask):
-        output_enc, attn_dist = self.attention(input_enc, mask)
+        q,k,v = input_enc, input_enc, input_enc
+        output_enc, attn_dist = self.attention(q,k,v, mask)
+        output_enc = self.pointwise_feedforward(output_enc)
+        return output_enc, attn_dist
+    
+class DecoderBlock(nn.Module):
+    def __init__(self, num_attention_heads, hidden_size, dropout_prob, hidden_act="gelu"):
+        super().__init__()
+        self.attention = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
+        self.cross_attention = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
+        self.pointwise_feedforward = PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
+
+    def forward(self, input_enc, img_emb, mask):
+        q,k,v = input_enc, input_enc, input_enc
+        output_enc, attn_dist = self.attention(q,k,v, mask)
+        
+        _q = img_emb
+        output_enc, attn_dist = self.cross_attention(_q,k,v, mask)
+        
         output_enc = self.pointwise_feedforward(output_enc)
         return output_enc, attn_dist
 
@@ -23,9 +41,10 @@ class BERT4Rec(nn.Module):
     def __init__(
         self,
         num_item: int,
-        hidden_size: int = 256,
+        hidden_size: int = 512,
         num_attention_heads: int = 4,
-        num_hidden_layers: int = 3,
+        num_encoder_layers: int = 3,
+        num_decoder_layers: int = 3,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
         max_len: int = 30,
         dropout_prob: float = 0.2,
@@ -49,18 +68,26 @@ class BERT4Rec(nn.Module):
 
         if self.pos_emb:
             self.positional_emb = nn.Embedding(max_len, hidden_size)
-
-        self.bert = nn.ModuleList(
-            [
-                BERT4RecBlock(num_attention_heads, hidden_size, dropout_prob, hidden_act)
-                for _ in range(num_hidden_layers)
-            ]
-        )
+            
+        encoderblocks = [EncoderBlock(num_attention_heads,
+                                      hidden_size,
+                                      dropout_prob,
+                                      hidden_act)
+                        for _ in range(num_encoder_layers)]
+        
+        decoderblocks = [DecoderBlock(num_attention_heads,
+                                      hidden_size,
+                                      dropout_prob,
+                                      hidden_act)
+                        for _ in range(num_decoder_layers)]
+        
+        self.encoder_blocks = nn.ModuleList(encoderblocks)
+        self.decoder_blocks = nn.ModuleList(decoderblocks)
 
         if self.use_linear:
             self.out = nn.Linear(self.hidden_size, self.num_item + 1)
 
-    def forward(self, log_seqs, **kwargs):
+    def forward(self, log_seqs, img_emb, **kwargs):
         seqs = self.item_emb(log_seqs).to(self.device)
         attn_mask = (log_seqs > 0).unsqueeze(1).repeat(1, log_seqs.shape[1], 1).unsqueeze(1).to(self.device)
 
@@ -70,9 +97,11 @@ class BERT4Rec(nn.Module):
 
         seqs = self.emb_layernorm(self.dropout(seqs))
 
-        for block in self.bert:
+        for block in self.encoder_blocks:
             seqs, _ = block(seqs, attn_mask)
-        bert_out = seqs
+            
+        for block in self.decoder_blocks:
+            seqs, _ = block(seqs, img_emb, attn_mask)
 
-        out = self.out(bert_out) if self.use_linear else bert_out
+        out = self.out(seqs) if self.use_linear else seqs
         return out

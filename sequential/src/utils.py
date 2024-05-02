@@ -6,6 +6,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import yaml
+import pickle
 
 
 def seed_everything(seed: int = 42):
@@ -29,6 +30,11 @@ def get_config(path):
 def load_json(path):
     with open(path, "r") as file:
         data = json.load(file)
+    return data
+
+def load_pkl(path):
+    with open(path, "rb") as file:
+        data = pickle.load(file)
     return data
 
 

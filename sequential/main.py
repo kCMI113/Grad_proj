@@ -11,7 +11,7 @@ from src.models.bert import BERT4Rec
 from src.models.mlp import MLPRec
 from src.models.mlpbert import MLPBERT4Rec
 from src.train import eval, train
-from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
+from src.utils import get_config, get_timestamp, load_json, load_pkl, mk_dir, seed_everything
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
 
@@ -91,22 +91,19 @@ def main():
     gen_img_emb = torch.load(f"{path}/gen_img_emb.pt") if model_args["num_gen_img"] else None
     text_emb = torch.load(f"{path}/detail_text_embeddings.pt") if model_args["detail_text"] else None
     id_group_dict = torch.load(f"{path}/id_group_dict.pt") if model_args["description_group"] else None
-    sim_matrix = torch.load(f"{path}/sim_matrix_sorted.pt")
-
+    #sim_matrix = torch.load(f"{path}/sim_matrix_sorted.pt")
+    origin_img_emb = torch.load(f"{path}/origin_img_emb.pt")
     num_user = metadata["num of user"]
     num_item = metadata["num of item"]
 
     train_dataset = BERTDataset(
         user_seq=train_data,
-        sim_matrix=sim_matrix,
         num_user=num_user,
         num_item=num_item,
+        origin_img_emb=origin_img_emb,
         gen_img_emb=gen_img_emb,
         idx_groups=id_group_dict,
         text_emb=text_emb,
-        neg_sampling=settings["neg_sampling"],
-        neg_size=settings["neg_size"],
-        neg_sample_size=settings["neg_sample_size"],
         max_len=model_args["max_len"],
         mask_prob=model_args["mask_prob"],
         num_gen_img=model_args["num_gen_img"],
@@ -116,15 +113,12 @@ def main():
     )
     valid_dataset = BERTTestDataset(
         valid_data,
-        sim_matrix,
         num_user,
         num_item,
+        origin_img_emb,
         gen_img_emb,
         id_group_dict,
         text_emb,
-        settings["neg_sampling"],
-        settings["neg_size"],
-        settings["neg_sample_size"],
         model_args["max_len"],
         model_args["num_gen_img"],
         model_args["img_noise"],
@@ -133,15 +127,12 @@ def main():
     )
     test_dataset = BERTTestDataset(
         test_data,
-        sim_matrix,
         num_user,
         num_item,
+        origin_img_emb,
         gen_img_emb,
         id_group_dict,
         text_emb,
-        settings["neg_sampling"],
-        settings["neg_size"],
-        settings["neg_sample_size"],
         model_args["max_len"],
         model_args["num_gen_img"],
         model_args["img_noise"],
@@ -154,7 +145,7 @@ def main():
     test_dataloader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
 
     ############# SETTING FOR TRAIN #############
-    device = f"cuda:{n_cuda}" if torch.cuda.is_available() else "cpu"
+    device = f"cuda" if torch.cuda.is_available() else "cpu"
 
     ## MODEL INIT ##
     model_class_ = models[model_name]

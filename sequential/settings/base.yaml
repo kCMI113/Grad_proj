@@ -3,7 +3,7 @@
 experiment_name: "refactor_test_BPR"
 
 # Model settings
-model_name: "MLPBERT4Rec"
+model_name: "BERT4Rec"
 model_arguments:
   hidden_size: 256        # hidden size for multi head attention
   num_attention_heads: 4  # number of heads for multi head attention
