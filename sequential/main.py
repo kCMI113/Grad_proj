@@ -195,17 +195,19 @@ def main():
             print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
             print(
                 (
-                    f'R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | '
-                    f'N10 : {valid_metrics["N10"]} | N20 : {valid_metrics["N20"]} | N40 : {valid_metrics["N40"]}'
+                    f'R1 : {valid_metrics["R1"]} | R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | '
+                    f'N1 : {valid_metrics["N1"]} | N10 : {valid_metrics["N10"]} | N20 : {valid_metrics["N20"]} | N40 : {valid_metrics["N40"]}'
                 )
             )
             wandb.log(
                 {
                     "epoch": i + 1,
                     "valid_loss": valid_loss,
+                    "valid_R1": valid_metrics["R1"],
                     "valid_R10": valid_metrics["R10"],
                     "valid_R20": valid_metrics["R20"],
                     "valid_R40": valid_metrics["R40"],
+                    "valid_N1": valid_metrics["N1"],
                     "valid_N10": valid_metrics["N10"],
                     "valid_N20": valid_metrics["N20"],
                     "valid_N40": valid_metrics["N40"],
@@ -224,8 +226,8 @@ def main():
     )
     print(
         (
-            f'R10 : {test_metrics["R10"]} | R20 : {test_metrics["R20"]} | R40 : {test_metrics["R40"]} | '
-            f'N10 : {test_metrics["N10"]} | N20 : {test_metrics["N20"]} | N40 : {test_metrics["N40"]}'
+            f'R1 : {valid_metrics["R1"]} | R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | '
+            f'N1 : {valid_metrics["N1"]} | N10 : {valid_metrics["N10"]} | N20 : {valid_metrics["N20"]} | N40 : {valid_metrics["N40"]}'
         )
     )
     wandb.log(test_metrics)

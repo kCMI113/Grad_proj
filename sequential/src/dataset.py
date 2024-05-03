@@ -45,7 +45,6 @@ class BERTDataset(Dataset):
 
     def __getitem__(self, index):
         user = self.user_seq[index]
-        seq = torch.tensor(user, dtype=torch.long) + 1
         tokens = []
         labels = []
         img_emb = []
@@ -151,13 +150,13 @@ class BERTTestDataset(BERTDataset):
         zero_padding2d = nn.ZeroPad2d((0,0,mask_len,0))
         
         tokens = zero_padding1d(tokens)
-        labels = zero_padding1d(labels)
         
-        for i in range(len(user)-1):
+        for i in range(len(user)):
             img_emb.append(self.origin_img_emb[user[i]])
 
         img_emb.append(self.gen_img_emb[user[-1]][np.random.randint(3)])
         img_emb = img_emb[-self.max_len:]
+        
         modal_emb = torch.tensor(img_emb, dtype=torch.float64)
         modal_emb = zero_padding2d(modal_emb)
         

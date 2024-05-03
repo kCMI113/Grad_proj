@@ -45,7 +45,7 @@ def eval(
     device,
 ):
     model.eval()
-    metrics_batches = {k: torch.tensor([]).to(device) for k in ["R1","R10", "R20", "R40", "N10", "N20", "N40"]}
+    metrics_batches = {k: torch.tensor([]).to(device) for k in ["R1","R10", "R20", "R40","N1", "N10", "N20", "N40"]}
     total_loss = 0
     pred_list = []
 

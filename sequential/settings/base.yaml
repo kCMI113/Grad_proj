@@ -7,8 +7,8 @@ model_name: "BERT4Rec"
 model_arguments:
   hidden_size: 512       # hidden size for multi head attention
   num_attention_heads: 4  # number of heads for multi head attention
-  num_encoder_layers: 3    # number of transformer layers
-  num_decoder_layers: 3
+  num_encoder_layers: 2    # number of transformer layers
+  num_decoder_layers: 2
   max_len: 90             # length of input sequence
   dropout_prob: 0.2       # dropout probability
   num_mlp_layers: 3       # number of mlp layers
