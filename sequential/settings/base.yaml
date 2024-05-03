@@ -31,7 +31,7 @@ lr: 0.001
 epoch: 50
 batch_size: 32
 weight_decay: 0.001 # weight decay for Adam
-num_workers: 0
+num_workers: 4
 valid_step: 1 # number of steps to run validation
 
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
