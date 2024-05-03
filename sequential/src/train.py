@@ -45,7 +45,7 @@ def eval(
     device,
 ):
     model.eval()
-    metrics_batches = {k: torch.tensor([]).to(device) for k in ["R10", "R20", "R40", "N10", "N20", "N40"]}
+    metrics_batches = {k: torch.tensor([]).to(device) for k in ["R1","R10", "R20", "R40", "N10", "N20", "N40"]}
     total_loss = 0
     pred_list = []
 
@@ -83,14 +83,14 @@ def eval(
             # rank of items e.g. index: item_id(0~), item_rank[0] : rank of item_id 0
             item_rank_batch = item_rank_batch.argsort().gather(dim=1, index=target_batch.view(-1, 1) - 1).squeeze()
 
-            for k in [10, 20, 40]:
+            for k in [1, 10, 20, 40]:
                 recall = simple_recall_at_k_batch(k, item_rank_batch)
                 ndcg = simple_ndcg_at_k_batch(k, item_rank_batch)
 
                 metrics_batches["R" + str(k)] = torch.cat((metrics_batches["R" + str(k)], recall))
                 metrics_batches["N" + str(k)] = torch.cat((metrics_batches["N" + str(k)], ndcg))
 
-        for k in [10, 20, 40]:
+        for k in [1, 10, 20, 40]:
             metrics_batches["R" + str(k)] = metrics_batches["R" + str(k)].mean()
             metrics_batches["N" + str(k)] = metrics_batches["N" + str(k)].mean()
 

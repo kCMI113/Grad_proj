@@ -1,6 +1,6 @@
 # Base settings for common model & experiment
 
-experiment_name: "refactor_test_BPR"
+experiment_name: "cross attention"
 
 # Model settings
 model_name: "BERT4Rec"
@@ -37,6 +37,6 @@ valid_step: 1 # number of steps to run validation
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
 data_repo: "sequential"
 dataset: "small"
-data_version: "74651f0ea852d5628ecebb39140421ce929da218"
+data_version: "2d8e7ecaf88b734d4f8d8295abaa08d59c2f78a6"
 
 n_cuda: "0"
