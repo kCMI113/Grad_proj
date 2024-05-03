@@ -39,6 +39,9 @@ class BERTDataset(Dataset):
         self.std = std
         self.mean = mean
         
+        self.pad_index = 0
+        self.mask_index = self.num_item+1
+        
 
     def __len__(self):
         return self.num_user
@@ -55,7 +58,7 @@ class BERTDataset(Dataset):
                 prob /= self.mask_prob
                 # mask_index: num_item + 1, 0: pad, 1~num_item: item index
                 if prob < 0.8:
-                    tokens.append(self.num_item + 1)
+                    tokens.append(self.mask_index)
                 elif prob < 0.9:
                     tokens.append(random.choice(range(1, self.num_item + 1)))
                 else:
@@ -64,7 +67,7 @@ class BERTDataset(Dataset):
                 img_emb.append(self.gen_img_emb[s][np.random.randint(3)]) #s는 item idx ( -1 해야할지도?)
             else:
                 tokens.append(s+1)
-                labels.append(0)
+                labels.append(self.pad_index)
                 img_emb.append(self.origin_img_emb[s]) #s는 item idx ( -1 해야할지도?)
 
 
@@ -131,19 +134,18 @@ class BERTTestDataset(BERTDataset):
     def __getitem__(self, index):
         user = self.user_seq[index]
         
-        tokens = user
+        tokens = torch.tensor(user, dtype=torch.long) + 1
         labels = [0 for _ in range(self.max_len)]
         img_emb = []
     
 
-        labels[-1] = tokens[-1]  # target
-        tokens[-1] = self.num_item + 1  # masking
+        labels[-1] = tokens[-1].item()  # target
+        tokens[-1] = self.mask_index  # masking
 
 
         tokens = tokens[-self.max_len :]
         mask_len = self.max_len - len(tokens)
         
-        tokens = torch.tensor(tokens, dtype=torch.long)+1
         labels = torch.tensor(labels, dtype=torch.long)
         
         zero_padding1d = nn.ZeroPad1d((mask_len, 0))
@@ -156,9 +158,7 @@ class BERTTestDataset(BERTDataset):
 
         img_emb.append(self.gen_img_emb[user[-1]][np.random.randint(3)])
         img_emb = img_emb[-self.max_len:]
-        
-        modal_emb = torch.stack(img_emb)
-        modal_emb.type(torch.float64)
+        modal_emb = torch.tensor(img_emb, dtype=torch.float64)
         modal_emb = zero_padding2d(modal_emb)
         
 
