@@ -158,7 +158,8 @@ class BERTTestDataset(BERTDataset):
 
         img_emb.append(self.gen_img_emb[user[-1]][np.random.randint(3)])
         img_emb = img_emb[-self.max_len:]
-        modal_emb = torch.tensor(img_emb, dtype=torch.float64)
+        modal_emb = torch.stack(img_emb)
+        modal_emb.type(torch.float64)
         modal_emb = zero_padding2d(modal_emb)
         
 
