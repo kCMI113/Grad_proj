@@ -19,7 +19,7 @@ model_arguments:
   hidden_act: "gelu"      # Activation function for attention, mlp
   num_gen_img: 2          # Number of generated image for mlp input
   mask_prob: 0.4          # Input sequence masking probability
-  description_group: False # group by same image description
+  description_group: True # group by same image description
   merge: "mul"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
   detail_text: False      # using embedding of detail_text of item
 
@@ -37,6 +37,6 @@ valid_step: 1 # number of steps to run validation
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
 data_repo: "sequential"
 dataset: "small"
-data_version: "2d8e7ecaf88b734d4f8d8295abaa08d59c2f78a6"
+data_version: "1886aac081a03f5dbf635f4d306195556f7cf4ba"
 
 n_cuda: "0"

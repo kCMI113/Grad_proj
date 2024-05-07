@@ -93,14 +93,17 @@ def main():
     id_group_dict = torch.load(f"{path}/id_group_dict.pt") if model_args["description_group"] else None
     #sim_matrix = torch.load(f"{path}/sim_matrix_sorted.pt")
     origin_img_emb = torch.load(f"{path}/origin_img_emb.pt")
+    #article_id_gen_emb = torch.load(f"{path}/article_id_gen_img_embedding.pth")
     num_user = metadata["num of user"]
     num_item = metadata["num of item"]
+
 
     train_dataset = BERTDataset(
         user_seq=train_data,
         num_user=num_user,
         num_item=num_item,
         origin_img_emb=origin_img_emb,
+        id_group_dic=id_group_dict,
         gen_img_emb=gen_img_emb,
         idx_groups=id_group_dict,
         text_emb=text_emb,
