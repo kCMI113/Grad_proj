@@ -103,7 +103,6 @@ def main():
         num_user=num_user,
         num_item=num_item,
         origin_img_emb=origin_img_emb,
-        id_group_dic=id_group_dict,
         gen_img_emb=gen_img_emb,
         idx_groups=id_group_dict,
         text_emb=text_emb,

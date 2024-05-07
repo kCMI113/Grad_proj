@@ -15,7 +15,6 @@ class BERTDataset(Dataset):
         num_user,
         num_item,
         origin_img_emb,
-        id_group_dic,
         gen_img_emb: Optional[torch.Tensor] = None,
         idx_groups: Optional[torch.Tensor] = None,
         text_emb: Optional[torch.Tensor] = None,
@@ -25,6 +24,7 @@ class BERTDataset(Dataset):
         img_noise: bool = False,
         std: float = 1,
         mean: float = 0,
+
     ) -> None:
         self.user_seq = user_seq
         self.num_user = num_user
@@ -65,7 +65,7 @@ class BERTDataset(Dataset):
                 else:
                     tokens.append(s+1)
                 labels.append(s+1)
-                group_sample = sample(self.idx_groups[s], 1)
+                group_sample = sample(self.idx_groups[s], 1)[0]
                 img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)]) #s는 item idx ( -1 해야할지도?)
             else:
                 tokens.append(s+1)
@@ -158,7 +158,7 @@ class BERTTestDataset(BERTDataset):
         for i in range(len(user)-1):
             img_emb.append(self.origin_img_emb[user[i]])
 
-        group_sample = sample(self.idx_groups[user[-1]], 1)
+        group_sample = sample(self.idx_groups[user[-1]], 1)[0]
         img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)])
         img_emb = img_emb[-self.max_len:]
         modal_emb = torch.stack(img_emb)
