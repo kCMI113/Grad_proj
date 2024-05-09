@@ -21,13 +21,13 @@ model_arguments:
   mask_prob: 0.4          # Input sequence masking probability
   description_group: True # group by same image description
   merge: "mul"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
-  detail_text: False      # using embedding of detail_text of item
+  detail_text: True      # using embedding of detail_text of item
 
 neg_size : 50             # number of sampling cadidate oiik
 neg_sample_size : 5       # number of negative sample
 neg_sampling : False      # True if use negative sampling
 
-lr: 0.001
+lr: 0.0001
 epoch: 50
 batch_size: 32
 weight_decay: 0.001 # weight decay for Adam

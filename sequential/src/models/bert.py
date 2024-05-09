@@ -27,11 +27,11 @@ class DecoderBlock(nn.Module):
         self.pointwise_feedforward = PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
 
     def forward(self, input_enc, img_emb, mask):
-        q,k,v = input_enc, input_enc, input_enc
+        q,k,v = img_emb, img_emb, img_emb
         output_enc, attn_dist = self.attention(q,k,v, mask)
         
-        _q = img_emb
-        output_enc, attn_dist = self.cross_attention(_q,k,v, mask)
+        _q,_k,_v = output_enc, input_enc, input_enc
+        output_enc, attn_dist = self.cross_attention(_q,_k,_v, mask)
         
         output_enc = self.pointwise_feedforward(output_enc)
         return output_enc, attn_dist

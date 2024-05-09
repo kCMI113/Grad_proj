@@ -65,13 +65,15 @@ class BERTDataset(Dataset):
                 else:
                     tokens.append(s+1)
                 labels.append(s+1)
-                group_sample = sample(self.idx_groups[s], 1)[0]
-                img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)]) #s는 item idx ( -1 해야할지도?)
+                img_emb.append(self.text_emb[s]+torch.normal(.0,0.2,size=(512,)))
+                #group_sample = sample(self.idx_groups[s], 1)[0]
+                #img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)]) #s는 item idx ( -1 해야할지도?)
             else:
                 tokens.append(s+1)
                 labels.append(self.pad_index)
-                img_emb.append(self.origin_img_emb[s]) #s는 item idx ( -1 해야할지도?)
-
+                #img_emb.append(self.origin_img_emb[s]) #s는 item idx ( -1 해야할지도?)
+                img_emb.append(self.text_emb[s])
+                
 
         tokens = tokens[-self.max_len :]
         labels = labels[-self.max_len :]
@@ -155,12 +157,17 @@ class BERTTestDataset(BERTDataset):
         
         tokens = zero_padding1d(tokens)
         
-        for i in range(len(user)-1):
+        '''for i in range(len(user)-1):
             img_emb.append(self.origin_img_emb[user[i]])
 
         group_sample = sample(self.idx_groups[user[-1]], 1)[0]
-        img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)])
+        img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)])'''
+        for i in user:
+            img_emb.append(self.text_emb[i])
+        img_emb[-1] = img_emb[-1]+torch.normal(.0,0.2,size=(512,))
         img_emb = img_emb[-self.max_len:]
+        
+        
         modal_emb = torch.stack(img_emb)
         modal_emb.type(torch.float64)
         modal_emb = zero_padding2d(modal_emb)
