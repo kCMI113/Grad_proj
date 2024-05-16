@@ -88,7 +88,7 @@ def main():
     test_data = torch.load(f"{path}/test_data.pt")
 
     # conditional DATA
-    gen_img_emb = torch.load(f"{path}/gen_img_emb.pt") if model_args["num_gen_img"] else None
+    gen_img_emb = torch.load(f"{path}/item_idx_gen_embs.pt") if model_args["num_gen_img"] else None
     text_emb = torch.load(f"{path}/detail_text_embeddings.pt") if model_args["detail_text"] else None
     id_group_dict = torch.load(f"{path}/id_group_dict.pt") if model_args["description_group"] else None
     #sim_matrix = torch.load(f"{path}/sim_matrix_sorted.pt")

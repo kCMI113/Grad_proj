@@ -32,7 +32,7 @@ def train(model, optimizer, scheduler, dataloader, criterion, device):
             optimizer.step()
             total_loss += loss.item()
 
-    # scheduler.step()
+    #scheduler.step()
     return total_loss / len(dataloader)
 
 

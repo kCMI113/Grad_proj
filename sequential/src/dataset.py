@@ -65,14 +65,18 @@ class BERTDataset(Dataset):
                 else:
                     tokens.append(s+1)
                 labels.append(s+1)
-                img_emb.append(self.text_emb[s]+torch.normal(.0,0.2,size=(512,)))
+                #img_emb.append(self.text_emb[s]+torch.normal(.0,0.2,size=(512,)))
+                gen_embeddings = self.gen_img_emb[s]
+                ori_embedding = self.origin_img_emb[s]
+                closet_gen_arg = torch.argmax(torch.sum(ori_embedding*gen_embeddings,dim=-1)).item()
+                img_emb.append(self.gen_img_emb[s][closet_gen_arg])
                 #group_sample = sample(self.idx_groups[s], 1)[0]
                 #img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)]) #s는 item idx ( -1 해야할지도?)
             else:
                 tokens.append(s+1)
                 labels.append(self.pad_index)
-                #img_emb.append(self.origin_img_emb[s]) #s는 item idx ( -1 해야할지도?)
-                img_emb.append(self.text_emb[s])
+                img_emb.append(self.origin_img_emb[s]) #s는 item idx ( -1 해야할지도?)
+                #img_emb.append(self.text_emb[s])
                 
 
         tokens = tokens[-self.max_len :]
@@ -157,9 +161,14 @@ class BERTTestDataset(BERTDataset):
         
         tokens = zero_padding1d(tokens)
         
-        '''for i in range(len(user)-1):
+        for i in range(len(user)-1):
             img_emb.append(self.origin_img_emb[user[i]])
-
+            
+        gen_embeddings = self.gen_img_emb[user[-1]]
+        ori_embedding = self.origin_img_emb[user[-1]]
+        closet_gen_arg = torch.argmax(torch.sum(ori_embedding*gen_embeddings,dim=-1)).item()
+        img_emb.append(self.gen_img_emb[user[-1]][closet_gen_arg])
+        '''
         group_sample = sample(self.idx_groups[user[-1]], 1)[0]
         img_emb.append(self.gen_img_emb[group_sample][np.random.randint(3)])'''
         for i in user:
