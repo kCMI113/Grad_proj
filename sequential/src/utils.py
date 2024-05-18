@@ -1,12 +1,13 @@
 import json
 import os
+import pickle
 import random
 from datetime import datetime
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 import yaml
-import pickle
 
 
 def seed_everything(seed: int = 42):
@@ -31,6 +32,7 @@ def load_json(path):
     with open(path, "r") as file:
         data = json.load(file)
     return data
+
 
 def load_pkl(path):
     with open(path, "rb") as file:
@@ -78,3 +80,8 @@ def simple_ndcg_at_k_batch(k, rank):
 def mk_dir(file_path):
     if not os.path.exists(file_path):
         os.makedirs(file_path)
+
+
+def get_sim_img(text, imgs):
+    # text : 512, imgs: n * 512
+    return imgs[F.cosine_similarity(text, imgs, dim=1).argmax()].unsqueeze(0)  # 1 * 512
