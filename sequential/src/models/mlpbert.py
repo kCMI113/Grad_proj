@@ -83,7 +83,7 @@ class MLPBERT4Rec(nn.Module):
         return mlp_in
 
     def forward(self, log_seqs, modal_emb, labels):
-        bert_out = self.bert4rec_module(log_seqs=log_seqs, modal_emb=modal_emb)
+        bert_out, _ = self.bert4rec_module(log_seqs=log_seqs, modal_emb=modal_emb)
         mlp_in = self.make_mlp_in(labels, log_seqs, bert_out, modal_emb)
         mlp_out = self.mlp_module(mlp_in)
         out = self.out(mlp_out)

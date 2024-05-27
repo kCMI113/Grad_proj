@@ -1,42 +1,55 @@
 # Base settings for common model & experiment
 
-experiment_name: "refactor_test_BPR"
+experiment_name: "CA4Rec multi opti text std=0"
 
 # Model settings
-model_name: "MLPBERT4Rec"
+model_name: "CA4Rec"
+
+model_dataset:
+  # GenDataset : generative image, DescriptionDataset : image description
+  train_dataset: "DescriptionDataset"
+  # TestGenDataset : generative image, TestDescriptionDataset : image description
+  test_dataset: "TestDescriptionDataset"
+
 model_arguments:
-  hidden_size: 256        # hidden size for multi head attention
+  hidden_size: 512        # hidden size for multi head attention
   num_attention_heads: 4  # number of heads for multi head attention
-  num_hidden_layers: 4    # number of transformer layers
+  num_hidden_layers: 2    # number of transformer layers
   max_len: 90             # length of input sequence
   dropout_prob: 0.2       # dropout probability
-  num_mlp_layers: 3       # number of mlp layers
-  pos_emb: True           # True if using positional embedding
-  img_noise: True         # Add noise into generated image
-  std: 0.01               # noise std(available if img_noise is True)
-  mean: 0                 # noise mean(available if img_noise is True)
   hidden_act: "gelu"      # Activation function for attention, mlp
-  num_gen_img: 2          # Number of generated image for mlp input
+  pos_emb: True           # True if using positional embedding
   mask_prob: 0.4          # Input sequence masking probability
-  description_group: False # group by same image description
-  merge: "mul"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
-  detail_text: False      # using embedding of detail_text of item
   model_ckpt_path: "./model/0427000421/model_val_9.835206767016421.pt"
 
-neg_size : 50             # number of sampling cadidate oiik
-neg_sample_size : 5       # number of negative sample
-neg_sampling : False      # True if use negative sampling
+  num_mlp_layers: 3       # number of mlp layers
+  merge: "concat"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
 
-lr: 0.001
-epoch: 50
+  detail_text: True       # using embedding of detail_text of item
+  std:  0.0               # noise std(available if std value is minus, the std is adjusting std )
+  mean: 0.0               # noise mean
+
+  gen_img: False           # group by same image description
+  closest_origin: False    # the gen image embedding closest to origin image embedding
+
+  neg_sampling: False
+
+
+lr: 0.0001
+lr_step: 25
+lr_milestones : [25,50,100]
+lr_encoder_gamma: 0.5
+lr_decoder_gamma: 4
+
+epoch: 200
 batch_size: 64
 weight_decay: 0.001 # weight decay for Adam
-num_workers: 0
-valid_step: 1 # number of steps to run validation
+num_workers: 4
+valid_step: 3 # number of steps to run validation
 
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
 data_repo: "sequential"
 dataset: "small"
-data_version: "74651f0ea852d5628ecebb39140421ce929da218"
+data_version: "bf943bafc62071b872c56415b1b2d1fcda9f0531"
 
 n_cuda: "0"

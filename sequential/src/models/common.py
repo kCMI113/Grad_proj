@@ -37,13 +37,13 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(dropout_prob)
         self.layerNorm = nn.LayerNorm(self.hidden_size, 1e-6)
 
-    def forward(self, enc, mask):
-        residual = enc  # residual connection
-        batch_size, seqlen = enc.size(0), enc.size(1)
+    def forward(self, q, k, v, mask):
+        residual = q  # residual connection
+        batch_size, seqlen = q.size(0), q.size(1)
 
-        Q = self.W_Q(enc).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
-        K = self.W_K(enc).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
-        V = self.W_V(enc).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
+        Q = self.W_Q(q).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
+        K = self.W_K(k).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
+        V = self.W_V(v).view(batch_size, seqlen, self.num_attention_heads, self.head_units)
 
         Q, K, V = Q.transpose(1, 2), K.transpose(1, 2), V.transpose(1, 2)
         output, attn_dist = self.attention(Q, K, V, mask)
