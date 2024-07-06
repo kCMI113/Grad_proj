@@ -93,6 +93,7 @@ class GenDataset(Dataset):
 
         return (
             tokens,
+            tokens,
             modal_emb,
             labels,
         )
@@ -236,6 +237,7 @@ class DescriptionDataset(Dataset):
         modal_emb = zero_padding2d(modal_emb)
 
         return (
+            tokens,
             tokens,
             modal_emb,
             labels,

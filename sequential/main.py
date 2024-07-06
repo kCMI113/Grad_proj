@@ -5,6 +5,7 @@ import shutil
 import dotenv
 import torch
 import torch.nn as nn
+import wandb
 from huggingface_hub import snapshot_download
 from src import dataset as DS
 from src.custom_optimizer import MultiOptimizer, MultiScheduler
@@ -16,8 +17,6 @@ from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
-
-import wandb
 
 
 def main():
@@ -62,6 +61,7 @@ def main():
     data_repo = settings["data_repo"]
     dataset = settings["dataset"]
     data_version = settings["data_version"]
+    auto_regressive = model_args["auto_regressive"]
 
     ## ETC ##
     n_cuda = settings["n_cuda"]
@@ -102,8 +102,7 @@ def main():
     test_data = torch.load(f"{path}/test_data.pt")
 
     # conditional DATA
-    # negative sampling
-    torch.load(f"{path}/sim_matrix_sorted.pt") if model_args["neg_sampling"] else None
+    # negative sampling = torch.load(f"{path}/sim_matrix_sorted.pt") if model_args["neg_sampling"] else None
 
     # input is text embeddings grouped by description
     if model_args["detail_text"]:
@@ -138,18 +137,18 @@ def main():
         _parameter["gen_img_emb"] = gen_img_emb
         _parameter["closest_origin"] = model_args["closest_origin"]
 
-        train_dataset = train_dataset_class_(user_seq=train_data, **_parameter)
-        valid_dataset = test_dataset_class_(user_seq=valid_data, **_parameter)
-        test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
-
     elif model_args["detail_text"]:
         _parameter["text_emb"] = text_emb
         _parameter["mean"] = model_args["mean"]
         _parameter["std"] = gen_std if model_args["std"] < 0 else model_args["std"]
 
-        train_dataset = train_dataset_class_(user_seq=train_data, **_parameter)
-        valid_dataset = test_dataset_class_(user_seq=valid_data, **_parameter)
-        test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
+    train_dataset = (
+        test_dataset_class_(user_seq=train_data, **_parameter)
+        if auto_regressive
+        else train_dataset_class_(user_seq=train_data, **_parameter)
+    )
+    valid_dataset = test_dataset_class_(user_seq=valid_data, **_parameter)
+    test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
     valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=num_workers)

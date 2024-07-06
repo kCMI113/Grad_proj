@@ -13,7 +13,7 @@ def train(model, optimizer, scheduler, dataloader, criterion, device):
     total_loss = 0
 
     with tqdm(dataloader) as t:
-        for tokens, modal_emb, labels in t:
+        for _, tokens, modal_emb, labels in t:
             tokens = tokens.to(device)
             modal_emb = modal_emb.to(device)
             labels = labels.to(device)

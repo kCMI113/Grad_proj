@@ -33,7 +33,7 @@ model_arguments:
   closest_origin: False    # the gen image embedding closest to origin image embedding
 
   neg_sampling: False
-
+  auto_regressive: False
 
 lr: 0.0001
 lr_step: 25
