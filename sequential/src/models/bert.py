@@ -8,10 +8,16 @@ from .common import MultiHeadAttention, PositionwiseFeedForward
 
 
 class BERT4RecBlock(nn.Module):
-    def __init__(self, num_attention_heads, hidden_size, dropout_prob, hidden_act="gelu"):
+    def __init__(
+        self, num_attention_heads, hidden_size, dropout_prob, hidden_act="gelu"
+    ):
         super(BERT4RecBlock, self).__init__()
-        self.attention = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
-        self.pointwise_feedforward = PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
+        self.attention = MultiHeadAttention(
+            num_attention_heads, hidden_size, dropout_prob
+        )
+        self.pointwise_feedforward = PositionwiseFeedForward(
+            hidden_size, dropout_prob, hidden_act
+        )
 
     def forward(self, input_enc, mask):
         q, k, v = input_enc, input_enc, input_enc
@@ -53,7 +59,9 @@ class BERT4Rec(nn.Module):
 
         self.bert = nn.ModuleList(
             [
-                BERT4RecBlock(num_attention_heads, hidden_size, dropout_prob, hidden_act)
+                BERT4RecBlock(
+                    num_attention_heads, hidden_size, dropout_prob, hidden_act
+                )
                 for _ in range(num_hidden_layers)
             ]
         )
@@ -63,10 +71,18 @@ class BERT4Rec(nn.Module):
 
     def forward(self, log_seqs, **kwargs):
         seqs = self.item_emb(log_seqs).to(self.device)
-        attn_mask = (log_seqs > 0).unsqueeze(1).repeat(1, log_seqs.shape[1], 1).unsqueeze(1).to(self.device)
+        attn_mask = (
+            (log_seqs > 0)
+            .unsqueeze(1)
+            .repeat(1, log_seqs.shape[1], 1)
+            .unsqueeze(1)
+            .to(self.device)
+        )
 
         if self.pos_emb:
-            positions = np.tile(np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1])
+            positions = np.tile(
+                np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1]
+            )
             seqs += self.positional_emb(torch.tensor(positions).to(self.device))
 
         seqs = self.emb_layernorm(self.dropout(seqs))

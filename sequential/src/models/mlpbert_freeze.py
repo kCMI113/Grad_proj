@@ -55,7 +55,9 @@ class MLPwithBERTFreeze(MLPBERT4Rec):
         bert4rec_weight = torch.load(model_ckpt_path)
 
         try:
-            incompat_keys = self.bert4rec_module.load_state_dict(bert4rec_weight, strict=False)
+            incompat_keys = self.bert4rec_module.load_state_dict(
+                bert4rec_weight, strict=False
+            )
             assert incompat_keys.unexpected_keys == ["out.weight", "out.bias"]
 
             for param in self.bert4rec_module.parameters():

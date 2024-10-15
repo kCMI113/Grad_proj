@@ -73,8 +73,15 @@ class MLPBERT4Rec(nn.Module):
         if not modal_emb.shape[-1]:
             return bert_out
 
-        mlp_merge = modal_emb * (labels != 0).unsqueeze(-1)  # loss 계산에 포함되지 않는 것 0으로 변경
-        mlp_mask = (log_seqs > 0).unsqueeze(-1).repeat(1, 1, self.linear_in_size).to(self.device)
+        mlp_merge = modal_emb * (labels != 0).unsqueeze(
+            -1
+        )  # loss 계산에 포함되지 않는 것 0으로 변경
+        mlp_mask = (
+            (log_seqs > 0)
+            .unsqueeze(-1)
+            .repeat(1, 1, self.linear_in_size)
+            .to(self.device)
+        )
 
         if self.merge == "concat":
             mlp_in = torch.concat([bert_out, mlp_merge * mlp_mask], dim=-1)
