@@ -5,19 +5,19 @@ import shutil
 import dotenv
 import torch
 import torch.nn as nn
+import wandb
 from huggingface_hub import snapshot_download
+from recbole.model.loss import BPRLoss
 from src import dataset as DS
-from src.custom_optimizer import MultiOptimizer, MultiScheduler
 from src.models.bert import BERT4Rec
 from src.models.crossattention import CA4Rec, DOCA4Rec
 from src.models.mlp import MLPRec
 from src.models.mlpbert import MLPBERT4Rec
+from src.sampler import HardNegSampler, NegSampler
 from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 from torch.optim import Adam, lr_scheduler
 from torch.utils.data import DataLoader
-
-import wandb
 
 
 def main():
@@ -30,6 +30,7 @@ def main():
         "MLPBERT4Rec": MLPBERT4Rec,
         "CA4Rec": CA4Rec,
         "DOCA4Rec": DOCA4Rec,
+        # "modi_doca":
     }
     seed_everything()
     mk_dir("./model")
@@ -49,9 +50,6 @@ def main():
     ## TRAIN ##
     lr = settings["lr"]
     lr_step = settings["lr_step"]
-    lr_milestones = settings["lr_milestones"]
-    lr_encoder_gamma = settings["lr_encoder_gamma"]
-    lr_decoder_gamma = settings["lr_decoder_gamma"]
     epoch = settings["epoch"]
     batch_size = settings["batch_size"]
     weight_decay = settings["weight_decay"]
@@ -86,7 +84,7 @@ def main():
             snapshot_download(
                 repo_id=f"SLKpnu/{data_repo}",
                 repo_type="dataset",
-                cache_dir="./data",
+                cache_dir="../../Fa-rec/data",
                 revision=data_version,
             )
             + "/"
@@ -98,28 +96,21 @@ def main():
     print("-------------LOAD DATA-------------")
     metadata = load_json(f"{path}/metadata.json")
     train_data = torch.load(f"{path}/train_data.pt")
-    valid_data = torch.load(f"{path}/valid_data.pt")
     test_data = torch.load(f"{path}/test_data.pt")
-
-    # conditional DATA
-    # negative sampling
-    torch.load(f"{path}/sim_matrix_sorted.pt") if model_args["neg_sampling"] else None
-
-    # input is text embeddings grouped by description
-    if model_args["detail_text"]:
-        text_emb = torch.load(f"{path}/detail_text_embeddings.pt")
-        if model_args["std"] < 0:
-            gen_emb = torch.load(f"{path}/gen_img_emb.pt")
-            gen_emb = gen_emb.reshape((-1, 512))
-            gen_std = torch.std(gen_emb, dim=0)
-
-    # input is generative and origin image grouped by description
-    if model_args["gen_img"]:
-        gen_img_emb = torch.load(f"{path}/item_idx_gen_embs.pt")
-        origin_img_emb = torch.load(f"{path}/origin_img_emb.pt")
 
     num_user = metadata["num of user"]
     num_item = metadata["num of item"]
+
+    # conditional DATA
+    if model_args["loss"] == "BPR":
+        if model_args["n_HNS"] > 0:
+            hnsampler = HardNegSampler(
+                model_args["n_HNS"],
+                num_user,
+                torch.load(f"{path}/gen_img_sim_item.pt"),
+            )
+        if model_args["n_NS"] > 0:
+            negsampler = NegSampler(model_args["n_NS"], num_user, num_item)
 
     print("-------------COMPLETE LOAD DATA-------------")
 
@@ -127,33 +118,36 @@ def main():
         "num_user": num_user,
         "num_item": num_item,
         "max_len": model_args["max_len"],
-        "mask_prob": model_args["mask_prob"],
     }
 
     train_dataset_class_ = getattr(DS, model_dataset["train_dataset"])
     test_dataset_class_ = getattr(DS, model_dataset["test_dataset"])
 
-    if model_args["gen_img"]:
-        _parameter["origin_img_emb"] = origin_img_emb
-        _parameter["gen_img_emb"] = gen_img_emb
-        _parameter["closest_origin"] = model_args["closest_origin"]
+    _parameter["gen_img_emb"] = torch.load(f"{path}/six_gen_emb_241014.pt")
+    _parameter["txt_emb"] = torch.load(f"{path}/detail_text_embeddings.pt")
+    _parameter["gen_img_idx"] = torch.load(f"{path}/input_gen_img.pt")
+    # _parameter["mean"] = model_args["mean"]
+    # _parameter["std"] = model_args["std"]
 
-        train_dataset = train_dataset_class_(user_seq=train_data, **_parameter)
-        valid_dataset = test_dataset_class_(user_seq=valid_data, **_parameter)
-        test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
+    train_dataset = train_dataset_class_(
+        user_seq=test_data,
+        hnsampler=hnsampler,
+        negsampler=negsampler,
+        mask_prob=model_args["mask_prob"],
+        **_parameter,
+    )
+    valid_dataset = test_dataset_class_(user_seq=test_data, is_valid=True, **_parameter)
+    test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
 
-    elif model_args["detail_text"]:
-        _parameter["text_emb"] = text_emb
-        _parameter["mean"] = model_args["mean"]
-        _parameter["std"] = gen_std if model_args["std"] < 0 else model_args["std"]
-
-        train_dataset = train_dataset_class_(user_seq=train_data, **_parameter)
-        valid_dataset = test_dataset_class_(user_seq=valid_data, **_parameter)
-        test_dataset = test_dataset_class_(user_seq=test_data, **_parameter)
-
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-    valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, num_workers=num_workers)
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=batch_size, num_workers=num_workers
+    )
+    valid_dataloader = DataLoader(
+        valid_dataset, batch_size=batch_size, num_workers=num_workers
+    )
+    test_dataloader = DataLoader(
+        test_dataset, batch_size=batch_size, num_workers=num_workers
+    )
 
     ############# SETTING FOR TRAIN #############
     device = f"cuda:{n_cuda}" if torch.cuda.is_available() else "cpu"
@@ -170,39 +164,25 @@ def main():
         device=device,
     ).to(device)
 
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
-    if model_name == "CA4Rec":
-        optimizer = MultiOptimizer(model, lr, weight_decay)
-        scheduler = MultiScheduler(
-            optimizer.encoder_optimizer,
-            optimizer.decoder_optimizer,
-            milestones=lr_milestones,
-            gamma1=lr_encoder_gamma,
-            gamma2=lr_decoder_gamma,
-        )
-    else:
-        optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
-        scheduler = lr_scheduler.StepLR(optimizer=optimizer, step_size=lr_step, gamma=0.5)
+    criterion = (
+        nn.CrossEntropyLoss(ignore_index=0) if model_args["loss"] == "CE" else BPRLoss
+    )
+
+    optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = lr_scheduler.StepLR(optimizer=optimizer, step_size=lr_step, gamma=0.5)
 
     ############# TRAIN AND EVAL #############
     for i in range(epoch):
         print("-------------TRAIN-------------")
-        train_loss = train(model, optimizer, scheduler, train_dataloader, criterion, device)
-        if model_name == "CA4Rec":
-            print(
-                f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups["lr_encoder"]} | {optimizer.param_groups["lr_decoder"]}'
-            )
-            wandb.log(
-                {
-                    "loss": train_loss,
-                    "epoch": i + 1,
-                    "lr_encoder": optimizer.param_groups["lr_encoder"],
-                    "lr_decoder": optimizer.param_groups["lr_decoder"],
-                }
-            )
-        else:
-            print(f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups[0]["lr"]}')
-            wandb.log({"loss": train_loss, "epoch": i + 1, "lr": optimizer.param_groups[0]["lr"]})
+        train_loss = train(
+            model, optimizer, scheduler, train_dataloader, criterion, device
+        )
+        print(
+            f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups[0]["lr"]}'
+        )
+        wandb.log(
+            {"loss": train_loss, "epoch": i + 1, "lr": optimizer.param_groups[0]["lr"]}
+        )
 
         if i % settings["valid_step"] == 0:
             print("-------------VALID-------------")
@@ -214,7 +194,7 @@ def main():
                 mode="valid",
                 dataloader=valid_dataloader,
                 criterion=criterion,
-                train_data=train_data,
+                train_data=test_data,
                 device=device,
             )
             print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
@@ -238,7 +218,9 @@ def main():
                     "valid_N40": valid_metrics["N40"],
                 }
             )
-            torch.save(model.state_dict(), f"./model/{timestamp}/model_val_{valid_loss}.pt")
+            torch.save(
+                model.state_dict(), f"./model/{timestamp}/model_val_{valid_loss}.pt"
+            )
 
     print("-------------EVAL-------------")
     pred_list, test_metrics = eval(

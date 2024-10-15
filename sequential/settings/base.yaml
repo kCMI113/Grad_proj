@@ -1,15 +1,15 @@
 # Base settings for common model & experiment
 
-experiment_name: "CA4Rec multi opti text std=0"
+experiment_name: "newdoca_241015"
 
 # Model settings
-model_name: "CA4Rec"
+model_name: "DOCA4Rec"
 
 model_dataset:
   # GenDataset : generative image, DescriptionDataset : image description
-  train_dataset: "DescriptionDataset"
+  train_dataset: "TrainDataset"
   # TestGenDataset : generative image, TestDescriptionDataset : image description
-  test_dataset: "TestDescriptionDataset"
+  test_dataset: "TestDataset"
 
 model_arguments:
   hidden_size: 512        # hidden size for multi head attention
@@ -25,21 +25,18 @@ model_arguments:
   num_mlp_layers: 3       # number of mlp layers
   merge: "concat"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
 
-  detail_text: True       # using embedding of detail_text of item
   std:  0.0               # noise std(available if std value is minus, the std is adjusting std )
   mean: 0.0               # noise mean
 
-  gen_img: False           # group by same image description
-  closest_origin: False    # the gen image embedding closest to origin image embedding
-
-  neg_sampling: False
+  loss: 'BPR'              # ["CE", "BPR"]
+  HNS: True                # image based hard negative sampling, loss should be "BPR"
+  n_HNS: 1                 # num of hard negative sample at each epoch, HNS should be True, range:(0,)
+  n_NS : 1                 # num of negative sample at each epoch, loss should be "BPR", range:(0,)
 
 
 lr: 0.0001
 lr_step: 25
-lr_milestones : [25,50,100]
-lr_encoder_gamma: 0.5
-lr_decoder_gamma: 4
+
 
 epoch: 200
 batch_size: 64
@@ -50,6 +47,6 @@ valid_step: 3 # number of steps to run validation
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
 data_repo: "sequential"
 dataset: "small"
-data_version: "bf943bafc62071b872c56415b1b2d1fcda9f0531"
+data_version: "278686a051240309cc4e55ba61990b48171e115a"
 
 n_cuda: "0"
