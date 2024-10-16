@@ -16,6 +16,7 @@ class TrainDataset(Dataset):
         txt_emb: Optional[torch.Tensor],
         num_user: int,
         num_item: int,
+        n_negs: int,
         max_len: int = 30,
         mask_prob: float = 0.15,
         hnsampler=None,
@@ -31,6 +32,7 @@ class TrainDataset(Dataset):
         self.mask_prob = mask_prob
         self.hnsampler = hnsampler
         self.negsampler = negsampler
+        self.n_negs = n_negs
 
         self.pad_index = 0
         self.mask_index = self.num_item + 1
@@ -59,15 +61,17 @@ class TrainDataset(Dataset):
                 else:
                     tokens.append(s)  # origin
                 labels.append(s)
-                neg.extend(self.hnsampler(index, s - 1, self.gen_img_idx[s - 1], user))
+                neg.extend(self.hnsampler(s - 1, self.gen_img_idx[s - 1], user))
                 neg.extend(self.negsampler(index, user))
             else:
                 tokens.append(s)
                 labels.append(self.pad_index)
 
-            img_emb.append(self.gen_img_emb[self.gen_img_idx[s - 1]])
+            img_emb.append(self.gen_img_emb[s - 1][self.gen_img_idx[s - 1]])
             txt_emb.append(self.txt_emb[s - 1])
-            negs.append(torch.tensor(neg))
+            negs.append(
+                torch.tensor(neg) if neg else torch.zeros(self.n_negs, dtype=torch.int8)
+            )
 
         tokens = tokens[-self.max_len :]
         labels = labels[-self.max_len :]
@@ -84,15 +88,15 @@ class TrainDataset(Dataset):
         labels = torch.tensor(labels, dtype=torch.long)
         tokens = zero_padding1d(tokens)
         labels = zero_padding1d(labels)
-        negs = [[] for _ in range(mask_len)] + negs
 
         img_emb = zero_padding2d(torch.stack(img_emb))
         txt_emb = zero_padding2d(torch.stack(txt_emb))
+        negs = zero_padding2d(torch.stack(negs))
 
         return (tokens, labels, negs, img_emb, txt_emb)
 
 
-class TestDataset(TrainDataset):
+class TestDataset(Dataset):
     def __init__(
         self,
         user_seq,
@@ -104,15 +108,13 @@ class TestDataset(TrainDataset):
         max_len: int = 30,
         is_valid: bool = False,
     ) -> None:
-        super().__init__(
-            user_seq=user_seq,
-            gen_img_idx=gen_img_idx,
-            gen_img_emb=gen_img_emb,
-            txt_emb=txt_emb,
-            num_user=num_user,
-            num_item=num_item,
-            max_len=max_len,
-        )
+        self.user_seq = user_seq
+        self.num_user = num_user
+        self.num_item = num_item
+        self.gen_img_idx = gen_img_idx
+        self.gen_img_emb = gen_img_emb
+        self.txt_emb = txt_emb
+        self.max_len = max_len
         self.is_valid = is_valid
 
     def __getitem__(self, index):
@@ -138,7 +140,7 @@ class TestDataset(TrainDataset):
         tokens = zero_padding1d(tokens)
 
         for item in range(user[:end_idx]):
-            img_emb.append(self.gen_img_emb[self.gen_img_idx[item - 1]])
+            img_emb.append(self.gen_img_emb[item - 1][self.gen_img_idx[item - 1]])
             txt_emb.append(self.txt_emb[item - 1])
 
         img_emb = img_emb[-self.max_len :]
