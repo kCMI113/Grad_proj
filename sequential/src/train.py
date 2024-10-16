@@ -1,4 +1,7 @@
+import time
+
 import numpy as np
+import recbole.model.loss
 import torch
 from src.models.bert import BERT4Rec
 from src.models.crossattention import CA4Rec, DOCA4Rec
@@ -11,26 +14,55 @@ from tqdm import tqdm
 def train(model, optimizer, scheduler, dataloader, criterion, device):
     model.train()
     total_loss = 0
-
+    print("train str")
     with tqdm(dataloader) as t:
-        for tokens, modal_emb, labels in t:
+        str_t = time.time()
+        for tokens, labels, negs, img_emb, txt_emb in t:
+            str_loop = time.time()
+            print(str_loop - str_t)
             tokens = tokens.to(device)
-            modal_emb = modal_emb.to(device)
+            img_emb = img_emb.to(device)
+            txt_emb = txt_emb.to(device)
+            negs = negs.to(device)
             labels = labels.to(device)
 
             if isinstance(model, (MLPBERT4Rec, CA4Rec, DOCA4Rec)):
-                logits = model(log_seqs=tokens, modal_emb=modal_emb, labels=labels)
+                logits = model(log_seqs=tokens, img_emb=img_emb, txt_emb=txt_emb)
             elif isinstance(model, BERT4Rec):
                 logits, _ = model(log_seqs=tokens, labels=labels)
-            elif isinstance(model, MLPRec):
-                logits = model(modal_emb)
+            # elif isinstance(model, MLPRec):
+            #     logits = model(modal_emb)
 
-            loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+            if isinstance(criterion, torch.nn.CrossEntropyLoss):
+                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+            if isinstance(criterion, recbole.model.loss.BPRLoss):
+                neg_non_zero_idx = torch.where(negs[:, :, 0] != 0)
+                pos_non_zero_idx = torch.where(labels != 0)
+                neg_scores = torch.concat(
+                    [
+                        logits[
+                            neg_non_zero_idx[0],
+                            neg_non_zero_idx[1],
+                            negs[neg_non_zero_idx[0], neg_non_zero_idx[1], i],
+                        ]
+                        for i in range(negs.shape[-1])
+                    ]
+                )
+                pos_scores = (
+                    logits[
+                        pos_non_zero_idx[0],
+                        pos_non_zero_idx[1],
+                        labels[pos_non_zero_idx[0], pos_non_zero_idx[1]],
+                    ]
+                ).repeat(negs.shape[-1])
+                loss = criterion(pos_scores, neg_scores)
+
             t.set_postfix(loss=loss.item())
             model.zero_grad()
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            print(time.time() - str_loop)
 
     scheduler.step()
     return total_loss / len(dataloader)
@@ -45,7 +77,10 @@ def eval(
     device,
 ):
     model.eval()
-    metrics_batches = {k: torch.tensor([]).to(device) for k in ["R1", "R10", "R20", "R40", "N1", "N10", "N20", "N40"]}
+    metrics_batches = {
+        k: torch.tensor([]).to(device)
+        for k in ["R1", "R10", "R20", "R40", "N1", "N10", "N20", "N40"]
+    }
     total_loss = 0
     pred_list = []
 
@@ -57,17 +92,23 @@ def eval(
             users = users.to(device)
 
             if isinstance(model, (MLPBERT4Rec, CA4Rec, DOCA4Rec)):
-                logits = model(log_seqs=tokens, modal_emb=modal_emb, labels=labels)
+                logits = model(log_seqs=tokens, modal_emb=modal_emb)
             elif isinstance(model, BERT4Rec):
-                logits = model(log_seqs=tokens, labels=labels)
+                logits = model(log_seqs=tokens)
             elif isinstance(model, MLPRec):
                 logits = model(modal_emb)
 
             if mode == "valid":
-                loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
-                total_loss += loss.item()
+                if isinstance(criterion, torch.nn.CrossEntropyLoss):
+                    loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                if isinstance(criterion, recbole.model.loss.BPRLoss):
+                    loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                    loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                    total_loss += loss.item()
 
-            used_items_batch = [np.unique(train_data[user]) for user in users.cpu().numpy()]
+            used_items_batch = [
+                np.unique(train_data[user]) for user in users.cpu().numpy()
+            ]
             target_batch = labels[:, -1]
             user_res_batch = -logits[:, -1, 1:]
 
@@ -78,17 +119,29 @@ def eval(
             item_rank_batch = user_res_batch.argsort()
 
             if mode == "test":
-                pred_list.append(torch.concat((item_rank_batch[:, :40], target_batch.unsqueeze(1)), dim=1))
+                pred_list.append(
+                    torch.concat(
+                        (item_rank_batch[:, :40], target_batch.unsqueeze(1)), dim=1
+                    )
+                )
 
             # rank of items e.g. index: item_id(0~), item_rank[0] : rank of item_id 0
-            item_rank_batch = item_rank_batch.argsort().gather(dim=1, index=target_batch.view(-1, 1) - 1).squeeze()
+            item_rank_batch = (
+                item_rank_batch.argsort()
+                .gather(dim=1, index=target_batch.view(-1, 1) - 1)
+                .squeeze()
+            )
 
             for k in [1, 10, 20, 40]:
                 recall = simple_recall_at_k_batch(k, item_rank_batch)
                 ndcg = simple_ndcg_at_k_batch(k, item_rank_batch)
 
-                metrics_batches["R" + str(k)] = torch.cat((metrics_batches["R" + str(k)], recall))
-                metrics_batches["N" + str(k)] = torch.cat((metrics_batches["N" + str(k)], ndcg))
+                metrics_batches["R" + str(k)] = torch.cat(
+                    (metrics_batches["R" + str(k)], recall)
+                )
+                metrics_batches["N" + str(k)] = torch.cat(
+                    (metrics_batches["N" + str(k)], ndcg)
+                )
 
         for k in [1, 10, 20, 40]:
             metrics_batches["R" + str(k)] = metrics_batches["R" + str(k)].mean()
