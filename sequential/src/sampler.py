@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+import torch.nn as nn
 
 
 class NegSampler:
@@ -21,25 +23,29 @@ class NegSampler:
 
 
 class HardNegSampler:
-    def __init__(self, n_sample, n_users, sim_items, n_gen=6):
+    def __init__(self, n_sample, gen_emb, ori_emb):
         self.n_sample = n_sample
-        self.sim_items = sim_items.to(self)
-        self.cache_list = [[-1 for _ in range(n_gen)] for _ in range(n_users)]
+        self.gen_emb = gen_emb.to("cpu")
+        self.ori_emb = ori_emb.to("cpu")
+        self.cos = nn.CosineSimilarity(dim=1)
 
-    def __call__(self, user_id, target, target_gen_idx, pos_lists):
+    def __call__(self, target, target_gen_idx, pos_lists):
         neg_samples = []
         for _ in range(self.n_sample):
             gen_idx = np.random.randint(6)
             while gen_idx == target_gen_idx:  # sampling gen_image index
                 gen_idx = np.random.randint(6)
 
-            if self.cache_list[user_id][gen_idx] == -1:  # not in cache
-                self.cache_list[user_id][gen_idx] = np.setdiff1d(
-                    self.sim_items[target, gen_idx, :],
-                    pos_lists[user_id],
+            sim_items = torch.argsort(
+                self.cos(self.ori_emb, self.gen_emb[target, gen_idx]), descending=True
+            )[:1900]
+            neg_samples.append(
+                np.setdiff1d(
+                    sim_items,
+                    pos_lists,
                     assume_unique=True,
                 )[0]
-
-            neg_samples.append(self.cache_list[user_id][gen_idx])
+                + 1
+            )
 
         return neg_samples
