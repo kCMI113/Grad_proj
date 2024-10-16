@@ -30,7 +30,6 @@ def main():
         "MLPBERT4Rec": MLPBERT4Rec,
         "CA4Rec": CA4Rec,
         "DOCA4Rec": DOCA4Rec,
-        # "modi_doca":
     }
     seed_everything()
     mk_dir("./model")
@@ -84,7 +83,7 @@ def main():
             snapshot_download(
                 repo_id=f"SLKpnu/{data_repo}",
                 repo_type="dataset",
-                cache_dir="../../Fa-rec/data",
+                cache_dir="./data",
                 revision=data_version,
             )
             + "/"
@@ -101,17 +100,6 @@ def main():
     num_user = metadata["num of user"]
     num_item = metadata["num of item"]
 
-    # conditional DATA
-    if model_args["loss"] == "BPR":
-        if model_args["n_HNS"] > 0:
-            hnsampler = HardNegSampler(
-                model_args["n_HNS"],
-                num_user,
-                torch.load(f"{path}/gen_img_sim_item.pt"),
-            )
-        if model_args["n_NS"] > 0:
-            negsampler = NegSampler(model_args["n_NS"], num_user, num_item)
-
     print("-------------COMPLETE LOAD DATA-------------")
 
     _parameter = {
@@ -124,16 +112,27 @@ def main():
     test_dataset_class_ = getattr(DS, model_dataset["test_dataset"])
 
     _parameter["gen_img_emb"] = torch.load(f"{path}/six_gen_emb_241014.pt")
+    ori_img_emb = torch.load(f"{path}/ori_emb_tensor.pt")
     _parameter["txt_emb"] = torch.load(f"{path}/detail_text_embeddings.pt")
     _parameter["gen_img_idx"] = torch.load(f"{path}/input_gen_img.pt")
     # _parameter["mean"] = model_args["mean"]
     # _parameter["std"] = model_args["std"]
+
+    # conditional DATA
+    if model_args["loss"] == "BPR":
+        if model_args["n_HNS"] > 0:
+            hnsampler = HardNegSampler(
+                model_args["n_HNS"], _parameter["gen_img_emb"], ori_img_emb
+            )
+        if model_args["n_NS"] > 0:
+            negsampler = NegSampler(model_args["n_NS"], num_user, num_item)
 
     train_dataset = train_dataset_class_(
         user_seq=test_data,
         hnsampler=hnsampler,
         negsampler=negsampler,
         mask_prob=model_args["mask_prob"],
+        n_negs=model_args["n_HNS"] + model_args["n_NS"],
         **_parameter,
     )
     valid_dataset = test_dataset_class_(user_seq=test_data, is_valid=True, **_parameter)
@@ -165,7 +164,7 @@ def main():
     ).to(device)
 
     criterion = (
-        nn.CrossEntropyLoss(ignore_index=0) if model_args["loss"] == "CE" else BPRLoss
+        nn.CrossEntropyLoss(ignore_index=0) if model_args["loss"] == "CE" else BPRLoss()
     )
 
     optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
