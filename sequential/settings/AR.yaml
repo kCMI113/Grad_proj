@@ -1,0 +1,50 @@
+# Base settings for common model & experiment
+experiment_name: "AR_512_8_2"
+
+# Model settings
+model_name: "AR"
+
+model_dataset:
+  # GenDataset : generative image, DescriptionDataset : image description
+  train_dataset: "ARDataset"
+  # TestGenDataset : generative image, TestDescriptionDataset : image description
+  test_dataset: "ARDataset"
+
+model_arguments:
+  hidden_size: 512        # hidden size for multi head attention
+  num_attention_heads: 8  # number of heads for multi head attention
+  num_hidden_layers: 2    # number of transformer layers
+  max_len: 90             # length of input sequence
+  dropout_prob: 0.4       # dropout probability
+  hidden_act: "gelu"      # Activation function for attention, mlp
+  pos_emb: False           # True if using positional embedding
+  mask_prob: 0.3          # Input sequence masking probability
+
+  num_mlp_layers: 3       # number of mlp layers
+  merge: "concat"            # ways to merge output of bert4rec and image embeddings. One of ["concat", "mul"].
+
+  std:  0.0               # noise std(available if std value is minus, the std is adjusting std )
+  mean: 0.0               # noise mean
+
+  loss: 'CE'              # ["CE", "BPR"]
+  HNS: False              # image based hard negative sampling, loss should be "BPR"
+  n_HNS: 1                 # num of hard negative sample at each epoch, HNS should be True, range:(0,)
+  n_NS : 1                 # num of negative sample at each epoch, loss should be "BPR", range:(0,)
+
+ 
+lr: 0.001
+lr_step: 20
+
+
+epoch: 300
+batch_size: 64
+weight_decay: 0.001 # weight decay for Adam
+num_workers: 4
+valid_step: 10 # number of steps to run validation
+
+data_local: False       # True if loading dataset from local directory, else download from huggingface hub
+data_repo: "sequential"
+dataset: "small"
+data_version: "724e08a869ebcf7197032760d45d3bd74ad4b5cf"
+
+n_cuda: "0"

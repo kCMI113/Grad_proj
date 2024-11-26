@@ -20,6 +20,7 @@ class ScaledDotProductAttention(nn.Module):
         return output, attn_dist
 
 
+## ******** pre_LN로 수정됨!!!! 나중에 다른 모델에도 적용해줘야 함 ********
 class MultiHeadAttention(nn.Module):
     def __init__(self, num_attention_heads, hidden_size, dropout_prob):
         super(MultiHeadAttention, self).__init__()
@@ -35,10 +36,8 @@ class MultiHeadAttention(nn.Module):
 
         self.attention = ScaledDotProductAttention(self.head_units, dropout_prob)
         self.dropout = nn.Dropout(dropout_prob)
-        self.layerNorm = nn.LayerNorm(self.hidden_size, 1e-6)
 
-    def forward(self, q, k, v, mask):
-        residual = q  # residual connection
+    def forward(self, q, k, v, mask):  # input LN 적용된 결과!
         batch_size, seqlen = q.size(0), q.size(1)
 
         Q = self.W_Q(q).view(
@@ -57,7 +56,7 @@ class MultiHeadAttention(nn.Module):
         output = output.transpose(1, 2).contiguous()
         output = output.view(batch_size, seqlen, -1)
 
-        output = self.layerNorm(self.dropout(self.W_O(output)) + residual)
+        output = self.dropout(self.W_O(output))  # 호출한 곳에서 residual 더해줘야 함!
         return output, attn_dist
 
 
