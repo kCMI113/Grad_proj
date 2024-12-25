@@ -6,44 +6,29 @@ import shutil
 import dotenv
 import torch
 import torch.nn as nn
-import wandb
 from accelerate import Accelerator
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download, HfApi
+
 from recbole.model.loss import BPRLoss
+from torch.optim import Adam, lr_scheduler
+from torch.utils.data import DataLoader
+
+import wandb
 from src import dataset as DS
-from src.models.ARattn import ARModel
-from src.models.bert import BERT4Rec
-from src.models.crossattention import (
-    CA4Rec,
-    DOCA4Rec,
-    DOCAdvanced,
-    MMDOCA4Rec,
-    MMDOCAdvanced,
-)
-from src.models.mlp import MLPRec
-from src.models.mlpbert import MLPBERT4Rec
+from src.models.ARattn import ARModel, CLIPCAModel
+from src.models.MoEattn import MoEClipCA
 from src.sampler import HardNegSampler, NegSampler
 from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
-from torch.optim import Adam, lr_scheduler
-from torch.utils.data import DataLoader
+
+torch.autograd.set_detect_anomaly(True)
 
 
 def main(args):
     ############# SETTING #############
     setting_yaml_path = f"./settings/{args.config}.yaml"
     timestamp = get_timestamp()
-    models = {
-        "BERT4Rec": BERT4Rec,
-        "MLPRec": MLPRec,
-        "MLPBERT4Rec": MLPBERT4Rec,
-        "CA4Rec": CA4Rec,
-        "DOCA4Rec": DOCA4Rec,
-        "MMDOCA4Rec": MMDOCA4Rec,
-        "DOCAdvanced": DOCAdvanced,
-        "MMDOCAdvanced": MMDOCAdvanced,
-        "AR": ARModel,
-    }
+    models = {"AR": ARModel, "CLIPCA": CLIPCAModel, "MoE": MoEClipCA}
     seed_everything()
     mk_dir("./model")
     mk_dir("./data")
@@ -54,14 +39,23 @@ def main(args):
     model_name: str = settings["model_name"]
     model_args: dict = settings["model_arguments"]
     model_dataset: dict = settings["model_dataset"]
-    name = f"work-{timestamp}_" + settings["experiment_name"]
+    settings["experiment_name"] = (
+        f"work-{timestamp}_{model_name}_"
+        + f'{settings['batch_size']}_{model_args["hidden_size"]}_{model_args["num_attention_heads"]}_{model_args["num_hidden_layers"]}_{settings["lr"]}_{settings["weight_decay"]}'
+        + (
+            ""
+            if model_name == "AR"
+            else f'_{model_args["num_enc_layers"]}_{model_args["num_enc_heads"]}_{settings["alpha"]}_{settings["schedule_rate"]}'
+        )
+        + ("_useLinear" if model_args["use_linear"] else "")
+        + ("_shuffle" if settings["shuffle"] else "")
+    )
 
     shutil.copy(setting_yaml_path, f"./model/{timestamp}/setting.yaml")
 
     ############ SET HYPER PARAMS #############
     ## TRAIN ##
     lr = settings["lr"]
-    lr_step = settings["lr_step"]
     epoch = settings["epoch"]
     batch_size = settings["batch_size"]
     weight_decay = settings["weight_decay"]
@@ -84,10 +78,11 @@ def main(args):
     wandb.init(
         entity=os.environ.get("WANDB_ENTITY"),
         project=os.environ.get("WANDB_PROJECT"),
-        name=name,
+        name=settings["experiment_name"],
         mode=os.environ.get("WANDB_MODE"),
     )
     wandb.log(settings)
+    wandb.save(setting_yaml_path)
 
     ############# LOAD DATASET #############
     # when calling data from huggingface Hub
@@ -100,74 +95,57 @@ def main(args):
                 revision=data_version,
             )
             + "/"
-            + dataset
         )
     else:
         path = f"./data/{dataset}"
 
     _parameter = {
         "max_len": model_args["max_len"],
-        "n_negs": model_args["n_HNS"] + model_args["n_NS"],
     }
 
     print("-------------LOAD DATA-------------")
-    metadata = load_json(f"{path}/metadata.json")
-    train_data = torch.load(f"./data/xs/train_data_new_xs.pt")
-    test_data = torch.load(f"./data/xs/test_data_new_xs.pt")
-    _parameter["gen_img_emb"] = torch.load(f"./data/xs/gen_emb_new_dict.pt")
-    _parameter["ori_img_emb"] = torch.load(f"./data/xs/ori_emb_new_dict.pt")
+    metadata = load_json(f"{path}/20_core_metadata.json")
+    # train_data = torch.load(f"./data/xs/train_data_new_xs.pt")
+    test_data = torch.load(f"{path}/uniqued_test_data_xs.pt")
+    valid_data = [v[:-1] for v in test_data]
+    train_data = [v[:-2] for v in test_data]
+    # _parameter["gen_img_emb"] = torch.load(f"./data/xs/gen_emb_new_dict.pt")
+    _parameter["ori_img_emb"] = torch.load(f"{path}/idx2img_emb.pt")
+    _parameter["text_emb"] = torch.load(f"{path}/idx2text_emb.pt")
 
-    num_user = len(train_data)
-    num_item = len(_parameter["gen_img_emb"])
+    num_user = len(test_data)
+    num_item = len(_parameter["ori_img_emb"])
 
     _parameter["num_user"] = num_user
     _parameter["num_item"] = num_item
+    print(_parameter["num_user"], _parameter["num_item"])
 
     print("-------------COMPLETE LOAD DATA-------------")
 
     train_dataset_class_ = getattr(DS, model_dataset["train_dataset"])
     test_dataset_class_ = getattr(DS, model_dataset["test_dataset"])
 
-    # _parameter["gen_img_emb"] = torch.load("./noise_img_emb_09.pt").type(torch.float)
-    _parameter["txt_emb"] = torch.load(f"{path}/detail_text_embeddings.pt")
-    _parameter["gen_img_idx"] = torch.load(f"{path}/input_gen_img.pt")
-    # _parameter["mean"] = model_args["mean"]
-    # _parameter["std"] = model_args["std"]
-
-    hnsampler, negsampler = None, None
-    # conditional DATA
-    if model_args["loss"] == "BPR":
-        if model_args["n_HNS"] > 0:
-            sim_item_mat = torch.load(f"{path}/gen_img_sim_item_int32.pt")
-            hnsampler = HardNegSampler(model_args["n_HNS"], sim_item_mat)
-        if model_args["n_NS"] > 0:
-            negsampler = NegSampler(model_args["n_NS"], num_item)
-
     train_dataset = train_dataset_class_(
         user_seq=test_data,
-        hnsampler=hnsampler,
-        negsampler=negsampler,
-        mask_prob=model_args["mask_prob"],
         type="Train",
         **_parameter,
     )
     valid_dataset = test_dataset_class_(
         user_seq=test_data,
-        hnsampler=hnsampler,
-        negsampler=negsampler,
         type="Valid",
         **_parameter,
     )
     test_dataset = test_dataset_class_(
         user_seq=test_data,
-        hnsampler=hnsampler,
-        negsampler=negsampler,
         type="Test",
         **_parameter,
     )
 
     train_dataloader = DataLoader(
-        train_dataset, batch_size=batch_size, num_workers=num_workers
+        train_dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        shuffle=settings["shuffle"],
     )
     valid_dataloader = DataLoader(
         valid_dataset, batch_size=batch_size, num_workers=num_workers
@@ -177,13 +155,10 @@ def main(args):
     )
 
     ############# SETTING FOR TRAIN #############
-    device = f"cuda:{n_cuda}" if torch.cuda.is_available() else "cpu"
+    device = f"cuda:{n_cuda}" if n_cuda != "cpu" else "cpu"
 
     ## MODEL INIT ##
     model_class_ = models[model_name]
-
-    if model_name in ("MLPBERT4Rec", "MLPRec", "MLPwithBERTFreeze"):
-        model_args["linear_in_size"] = model_args["hidden_size"]
 
     model = model_class_(
         **model_args,
@@ -191,37 +166,24 @@ def main(args):
         device=device,
     ).to(device)
 
-    criterion = (
-        nn.CrossEntropyLoss(ignore_index=0) if model_args["loss"] == "CE" else BPRLoss()
-    )
-
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = lr_scheduler.StepLR(optimizer=optimizer, step_size=lr_step, gamma=0.5)
-
-    accelerator = Accelerator()
-    device = accelerator.device
-    model, optimizer, train_dataloader, scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, scheduler
-    )
 
     ############# TRAIN AND EVAL #############
     for i in range(epoch):
         print("-------------TRAIN-------------")
         train_loss = train(
-            accelerator,
-            model,
-            optimizer,
-            scheduler,
-            train_dataloader,
-            criterion,
-            device,
+            model=model,
+            optimizer=optimizer,
+            dataloader=train_dataloader,
+            criterion=criterion,
+            alpha=settings["alpha"],
+            device=device,
         )
         print(
-            f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups[0]["lr"]}'
+            f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | ALPHA : {settings["alpha"]}'
         )
-        wandb.log(
-            {"loss": train_loss, "epoch": i + 1, "lr": optimizer.param_groups[0]["lr"]}
-        )
+        wandb.log({"loss": train_loss, "epoch": i + 1})
 
         if i % settings["valid_step"] == 0:
             print("-------------VALID-------------")
@@ -234,6 +196,7 @@ def main(args):
                 dataloader=valid_dataloader,
                 criterion=criterion,
                 train_data=train_data,
+                alpha=settings["alpha"],
                 device=device,
             )
             print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
@@ -259,28 +222,65 @@ def main(args):
                     "valid_N40": valid_metrics["N40"],
                 }
             )
-            # torch.save(
-            #     model.state_dict(), f"./model/{timestamp}/model_val_{valid_loss}.pt"
-            # )
 
-    print("-------------EVAL-------------")
+            print("-------------EVAL-------------")
+            test_metrics = eval(
+                model=model,
+                mode="test",
+                dataloader=test_dataloader,
+                criterion=criterion,
+                train_data=valid_data,
+                device=device,
+                alpha=settings["alpha"],
+            )
+            print(
+                (
+                    f'R1 : {test_metrics["R1"]} | R5 : {test_metrics["R5"]} | R10 : {test_metrics["R10"]} | R20 : {test_metrics["R20"]} | R40 : {test_metrics["R40"]} | '
+                    f'N1 : {test_metrics["N1"]} | N5 : {test_metrics["N5"]} | N10 : {test_metrics["N10"]} | N20 : {test_metrics["N20"]} | N40 : {test_metrics["N40"]}'
+                )
+            )
+            test_metrics["epoch"] = i + 1
+            wandb.log(test_metrics)
+            settings["alpha"] = (
+                settings["alpha"] - settings["schedule_rate"]
+                if settings["alpha"] - settings["schedule_rate"] > 0.15
+                else 0.15
+            )  # update alpha
+            wandb.log({"epoch": i + 1, "alpha": settings["alpha"]})
+
+    print("-------------FINAL EVAL-------------")
     test_metrics = eval(
         model=model,
         mode="test",
         dataloader=test_dataloader,
         criterion=criterion,
-        train_data=train_data,
+        train_data=valid_data,
         device=device,
+        alpha=settings["alpha"],
     )
     print(
         (
-            f'R1 : {test_metrics["R1"]} | N5 : {test_metrics["N5"]} | R10 : {test_metrics["R10"]} | R20 : {test_metrics["R20"]} | R40 : {test_metrics["R40"]} | '
+            f'R1 : {test_metrics["R1"]} | R5 : {test_metrics["R5"]} | R10 : {test_metrics["R10"]} | R20 : {test_metrics["R20"]} | R40 : {test_metrics["R40"]} | '
             f'N1 : {test_metrics["N1"]} | N5 : {test_metrics["N5"]} | N10 : {test_metrics["N10"]} | N20 : {test_metrics["N20"]} | N40 : {test_metrics["N40"]}'
         )
     )
+    print("#################### SAVE MODEL CHECKPOINT ####################")
+    model_save_path = f"model/{timestamp}/{settings["experiment_name"]}"
+    if not os.path.exists(model_save_path):
+        os.makedirs(model_save_path)
+    torch.save(model.state_dict(), f"{model_save_path}/final_weights.pt")
+    wandb.save(f"model/{model_save_path}/final_weights.pt")
+    # Upload to Huggingface Hub
+    api = HfApi()
+    api.upload_folder(
+        folder_path=model_save_path,
+        repo_id="SLKpnu/mmp_hm",
+        path_in_repo=model_save_path.split("/")[1],
+        commit_message=f"{model_name}_{model_save_path.split('/')[1]} | run_name : "
+        + settings["experiment_name"],
+        repo_type="model",
+    )
     wandb.log(test_metrics)
-    # torch.save(pred_list, f"./model/{timestamp}/prediction.pt")
-    # wandb.save(f"./model/{timestamp}/prediction.pt")
 
     ############ WANDB FINISH #############
     wandb.finish()
@@ -290,7 +290,12 @@ if __name__ == "__main__":
     # torch.multiprocessing.set_start_method("spawn")
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-c", "--config", dest="config", action="store", required=False, default="AR"
+        "-c",
+        "--config",
+        dest="config",
+        action="store",
+        required=False,
+        default="MoE",
     )
     args = parser.parse_args()
     main(args)

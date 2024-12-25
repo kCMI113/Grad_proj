@@ -14,7 +14,7 @@ class TrainDataset(Dataset):
         gen_img_idx: Optional[torch.Tensor],
         gen_img_emb: Optional[torch.Tensor],
         ori_img_emb: Optional[torch.Tensor],
-        txt_emb: Optional[torch.Tensor],
+        text_emb: Optional[torch.Tensor],
         num_user: int,
         num_item: int,
         n_negs: int,
@@ -29,7 +29,7 @@ class TrainDataset(Dataset):
         self.gen_img_idx = gen_img_idx
         self.gen_img_emb = gen_img_emb
         self.ori_img_emb = ori_img_emb
-        self.txt_emb = txt_emb
+        self.text_emb = text_emb
         self.max_len = max_len
         self.mask_prob = mask_prob
         self.hnsampler = hnsampler
@@ -48,7 +48,7 @@ class TrainDataset(Dataset):
         negs = []
         labels = []
         img_emb = []
-        txt_emb = []
+        text_emb = []
 
         for s in user[:-2]:  # without valid, test, (1~)
             prob = random.random()
@@ -81,7 +81,7 @@ class TrainDataset(Dataset):
                 labels.append(self.pad_index)
                 img_emb.append(self.ori_img_emb[s - 1])
 
-            txt_emb.append(self.txt_emb[s - 1])
+            text_emb.append(self.text_emb[s - 1])
             negs.append(
                 torch.tensor(neg)
                 if neg
@@ -95,7 +95,7 @@ class TrainDataset(Dataset):
         tokens = tokens[-self.max_len :]
         labels = labels[-self.max_len :]
         img_emb = img_emb[-self.max_len :]
-        txt_emb = txt_emb[-self.max_len :]
+        text_emb = text_emb[-self.max_len :]
         negs = negs[-self.max_len :]
         mask_len = self.max_len - len(tokens)
 
@@ -109,10 +109,10 @@ class TrainDataset(Dataset):
         labels = zero_padding1d(labels)
 
         img_emb = zero_padding2d(torch.stack(img_emb))
-        txt_emb = zero_padding2d(torch.stack(txt_emb))
+        text_emb = zero_padding2d(torch.stack(text_emb))
         negs = zero_padding2d(torch.stack(negs))
 
-        return (tokens, labels, negs, img_emb, txt_emb)
+        return (tokens, labels, negs, img_emb, text_emb)
 
 
 class ARDataset(Dataset):
@@ -122,15 +122,12 @@ class ARDataset(Dataset):
         gen_img_idx: Optional[torch.Tensor],
         gen_img_emb: Optional[torch.Tensor],
         ori_img_emb: Optional[torch.Tensor],
-        txt_emb: Optional[torch.Tensor],
+        text_emb: Optional[torch.Tensor],
         num_user: int,
         num_item: int,
-        n_negs: int,
         max_len: int = 30,
-        mask_prob: float = 0.15,
-        hnsampler=None,
-        negsampler=None,
         type: str = "Train",
+        **kwargs
     ) -> None:
         self.user_seq = user_seq
         self.num_user = num_user
@@ -138,12 +135,8 @@ class ARDataset(Dataset):
         self.gen_img_idx = gen_img_idx
         self.gen_img_emb = gen_img_emb
         self.ori_img_emb = ori_img_emb
-        self.txt_emb = txt_emb
+        self.text_emb = text_emb
         self.max_len = max_len
-        self.mask_prob = mask_prob
-        self.hnsampler = hnsampler
-        self.negsampler = negsampler
-        self.n_negs = n_negs
         self.type_idx = -3 if type == "Train" else (-2 if type == "Valid" else -1)
 
         self.pad_index = 0
@@ -159,7 +152,7 @@ class ARDataset(Dataset):
         labels = user[1 : len(user) + self.type_idx + 1]
         gen_emb = []
         ori_emb = []
-        # txt_emb = []
+        # text_emb = []
 
         for i in range(len(tokens)):
             # gen_emb.append(
@@ -198,6 +191,71 @@ class ARDataset(Dataset):
         return (index, tokens, labels, gen_emb, ori_emb)
 
 
+class CLIPCADataset(Dataset):
+    def __init__(
+        self,
+        user_seq,
+        ori_img_emb: Optional[torch.Tensor],
+        text_emb: Optional[torch.Tensor],
+        num_user: int,
+        num_item: int,
+        max_len: int = 30,
+        type: str = "Train",
+        **kwargs
+    ) -> None:
+        self.user_seq = user_seq
+        self.num_user = num_user
+        self.num_item = num_item
+        self.ori_img_emb = ori_img_emb
+        self.text_emb = text_emb
+        self.max_len = max_len
+        self.type_idx = -3 if type == "Train" else (-2 if type == "Valid" else -1)
+
+    def __len__(self):
+        return self.num_user
+
+    def __getitem__(self, index):
+        user = np.array(self.user_seq[index]) + 1  # item index range : (1,n_items)
+        tokens = user[: self.type_idx]
+        labels = user[1 : len(user) + self.type_idx + 1]
+        ori_emb = []
+        gen_emb = []
+        text_emb = []
+
+        for i in range(len(tokens)):
+            gen_emb.append(self.ori_img_emb[labels[i] - 1])  # target's gen img
+            ori_emb.append(self.ori_img_emb[tokens[i] - 1])  # item ori img
+            text_emb.append(self.text_emb[tokens[i] - 1])  # item text emb
+
+        tokens = tokens[-self.max_len :]
+        labels = labels[-self.max_len :]
+        ori_emb = ori_emb[-self.max_len :]
+        gen_emb = gen_emb[-self.max_len :]
+        text_emb = text_emb[-self.max_len :]
+
+        mask_len = self.max_len - len(tokens)
+
+        if self.type_idx != -3:
+            labels = [0 for _ in range(len(labels) - 1)] + [labels[-1]]
+
+        # padding
+        zero_padding1d = nn.ZeroPad1d((mask_len, 0))  # padding left
+        zero_padding2d = nn.ZeroPad2d((0, 0, mask_len, 0))  # padding top
+
+        tokens = torch.tensor(tokens, dtype=torch.long)
+        labels = torch.tensor(labels, dtype=torch.long)
+        tokens = zero_padding1d(tokens)
+        labels = zero_padding1d(labels)
+        ori_emb = zero_padding2d(torch.stack(ori_emb))
+        text_emb = zero_padding2d(torch.stack(text_emb))
+        gen_emb = zero_padding2d(torch.stack(gen_emb))
+
+        if self.type_idx == -3:
+            return (tokens, labels, ori_emb, gen_emb, text_emb)
+
+        return (index, tokens, labels, ori_emb, gen_emb, text_emb)
+
+
 class TestDataset(Dataset):
     def __init__(
         self,
@@ -205,7 +263,7 @@ class TestDataset(Dataset):
         gen_img_idx: Optional[torch.Tensor],
         gen_img_emb: Optional[torch.Tensor],
         ori_img_emb: Optional[torch.Tensor],
-        txt_emb: Optional[torch.Tensor],
+        text_emb: Optional[torch.Tensor],
         num_user: int,
         num_item: int,
         n_negs: int,
@@ -220,7 +278,7 @@ class TestDataset(Dataset):
         self.gen_img_idx = gen_img_idx
         self.gen_img_emb = gen_img_emb
         self.ori_img_emb = ori_img_emb
-        self.txt_emb = txt_emb
+        self.text_emb = text_emb
         self.max_len = max_len
         self.is_valid = is_valid
         self.mask_index = self.num_item + 1
@@ -237,7 +295,7 @@ class TestDataset(Dataset):
         tokens = user[:-1] if self.is_valid else user[:]
         labels = [0 for _ in range(self.max_len)]
         img_emb = []
-        txt_emb = []
+        text_emb = []
         negs = (
             [
                 torch.tensor([0 for _ in range(self.n_negs)])
@@ -278,14 +336,14 @@ class TestDataset(Dataset):
         for item in tokens[:-1]:  # 1~
             # img_emb.append(self.gen_img_emb[item - 1][self.gen_img_idx[item - 1]])
             img_emb.append(self.ori_img_emb[item - 1])
-            txt_emb.append(self.txt_emb[item - 1])
+            text_emb.append(self.text_emb[item - 1])
 
         # # img_emb.append(
         # #     self.gen_img_emb[labels[-1] - 1][self.gen_img_idx[labels[-1] - 1]]
         # # )
         # img_emb.append(self.ori_img_emb[item - 1])
         img_emb.append(self.gen_img_emb[labels[-1] - 1])
-        txt_emb.append(self.txt_emb[labels[-1] - 1])
+        text_emb.append(self.text_emb[labels[-1] - 1])
 
         mask_len = self.max_len - len(tokens)
         zero_padding1d = nn.ZeroPad1d((mask_len, 0))
@@ -294,10 +352,10 @@ class TestDataset(Dataset):
         tokens = zero_padding1d(tokens)
 
         img_emb = img_emb[-self.max_len :]
-        txt_emb = txt_emb[-self.max_len :]
+        text_emb = text_emb[-self.max_len :]
 
         img_emb = zero_padding2d(torch.stack(img_emb))
-        txt_emb = zero_padding2d(torch.stack(txt_emb))
+        text_emb = zero_padding2d(torch.stack(text_emb))
         negs = torch.stack(negs) if len(negs) > 0 else torch.tensor([])
 
-        return (index, tokens, labels, negs, img_emb, txt_emb)
+        return (index, tokens, labels, negs, img_emb, text_emb)

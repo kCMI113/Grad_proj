@@ -1,0 +1,44 @@
+# Base settings for common model & experiment
+experiment_name: 
+
+# Model settings
+model_name: "MoE"
+
+model_dataset:
+  train_dataset: "CLIPCADataset"
+  test_dataset: "CLIPCADataset"
+
+model_arguments:
+  hidden_size: 512        # hidden size for multi head attention
+  num_attention_heads: 4  # number of heads for multi head attention
+  num_hidden_layers: 3    # number of transformer layers
+  num_enc_layers: 3    # number of item encoder's attention layers
+  num_enc_heads: 8
+  max_len: 90             # length of input sequence
+  dropout_prob: 0.2       # dropout probability
+  hidden_act: "gelu"      # Activation function for attention, mlp
+  pos_emb: False          # True if using positional embedding
+  use_linear: False       # if False. use dotpord for scoring
+  loss: 'CE'              # ["CE", "BPR"]
+  num_experts: 3            # num of experts(modality) (id, img, text)
+  aggr: 'top1'            # ['mean', 'top1']
+
+ 
+lr: 0.0005
+alpha: 0.65 # clip loss weight
+schedule_rate: 0.015
+
+
+epoch: 150
+batch_size: 256
+shuffle: True       # shuffle dataloader
+weight_decay: 0.001 # weight decay for Adam
+num_workers: 4
+valid_step: 5 # number of steps to run validation
+
+data_local: False       # True if loading dataset from local directory, else download from huggingface hub
+data_repo: "hm_20_core"
+dataset: 
+data_version: "7dcc9c7e4a652f5b43e8d01c7820432bc085398b"
+
+n_cuda: "0"

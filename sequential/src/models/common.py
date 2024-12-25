@@ -1,8 +1,52 @@
 import math
+from contextlib import suppress
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+def get_autocast(precision, device):
+    if precision == "amp":
+        return lambda: torch.amp.autocast(device_type=device)
+    elif precision == "amp_bfloat16" or precision == "amp_bf16":
+        # amp_bfloat16 is more stable than amp float16 for clip training
+        return lambda: torch.amp.autocast(dtype=torch.bfloat16, device_type=device)
+    elif precision == "fp16":
+        return lambda: torch.amp.autocast(dtype=torch.float16, device_type=device)
+    elif precision == "fp32":
+        return lambda: torch.amp.autocast(dtype=torch.float32, device_type=device)
+    else:
+        return suppress
+
+
+def contrastive_loss(logits, ignore_idx: int = -100) -> torch.Tensor:
+    labels = torch.arange(logits.shape[0]).to(logits.device)
+    labels[torch.sum(logits, dim=0) == 0] = -100
+    labels = labels.type(torch.long)
+    logits[logits.isnan()] = 0
+
+    return nn.functional.cross_entropy(logits, labels, ignore_index=ignore_idx)
+
+
+def clip_loss(item_embs, img_embs, logit_scale, epsilon: float = 1e-8) -> torch.Tensor:
+    img_embs = img_embs / (img_embs.norm(p=2, dim=-1, keepdim=True) + epsilon)
+    item_embs = item_embs / item_embs.norm(p=2, dim=-1, keepdim=True)
+    logit_scale = logit_scale.exp()
+    total_loss = 0
+    seq_len = img_embs.shape[1]
+
+    for i in range(seq_len):
+        item_emb = item_embs[:, i, :]
+        img_emb = img_embs[:, i, :]
+        logits_per_item = torch.matmul(item_emb, img_emb.t()) * logit_scale
+
+        item_loss = contrastive_loss(logits_per_item)
+        image_loss = contrastive_loss(logits_per_item.t())
+
+        total_loss += ((item_loss + image_loss) / 2.0) / seq_len
+
+    return total_loss
 
 
 class ScaledDotProductAttention(nn.Module):
