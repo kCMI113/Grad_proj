@@ -46,7 +46,8 @@ class MoEAttenBlock(nn.Module):
         hidden_act="gelu",
     ):
         super().__init__()
-        self.CA = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
+        self.CA = MultiHeadAttention(
+            num_attention_heads, hidden_size, dropout_prob)
         self.experts = nn.ModuleList(
             [
                 PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
@@ -67,15 +68,17 @@ class MoEAttenBlock(nn.Module):
 
         img_ca_out, _ = self.CA(gen_emb, concated_input, concated_input, mask)
         img_ca_out += residual_gen  # residual
-        ln_img_ca_out = self.layerNorm(img_ca_out) # pre-ln
+        ln_img_ca_out = self.layerNorm(img_ca_out)  # pre-ln
 
         gate_scores = self.gate(img_ca_out)
-        expert_outputs = [expert(ln_img_ca_out) for expert in self.experts] 
+        expert_outputs = [expert(ln_img_ca_out) for expert in self.experts]
         stacked_expert_outputs = torch.stack(expert_outputs, dim=-1)
 
-        moe_output = torch.sum(
-            gate_scores.unsqueeze(-2) * stacked_expert_outputs, dim=-1
-        ) + ln_img_ca_out # skip-connection
+        moe_output = (
+            torch.sum(gate_scores.unsqueeze(-2) *
+                      stacked_expert_outputs, dim=-1)
+            + ln_img_ca_out
+        )  # skip-connection
 
         return moe_output
 
@@ -89,6 +92,8 @@ class MoEClipCA(CLIPCAModel):
         num_hidden_layers: int = 3,
         num_enc_layers: int = 2,
         num_enc_heads: int = 3,
+        img_emb_size: int = 512,
+        text_emb_size: int = 512,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
         num_experts: int = 3,
         max_len: int = 30,
@@ -97,6 +102,7 @@ class MoEClipCA(CLIPCAModel):
         use_linear: bool = True,  # True if using linear layer at last
         logit_scale_init_value: float = 2.6592,
         device: str = "cpu",
+        modal_gate: bool = False,
         **kwargs
     ):
         super().__init__(
@@ -106,16 +112,20 @@ class MoEClipCA(CLIPCAModel):
             num_hidden_layers,
             num_enc_layers,
             num_enc_heads,
+            img_emb_size,
             hidden_act,
             max_len,
             dropout_prob,
             pos_emb,
             use_linear,
             logit_scale_init_value,
-            device
+            device,
         )
-        
-        self.modal_projection = nn.Linear((self.gen_emb_size)*2+self.hidden_size, self.hidden_size)
+
+        self.text_emb_size = text_emb_size
+        self.modal_projection = nn.Linear(
+            self.gen_emb_size + self.text_emb_size + self.hidden_size, self.hidden_size
+        )
         self.blocks = nn.ModuleList(
             [
                 MoEAttenBlock(
@@ -128,6 +138,9 @@ class MoEClipCA(CLIPCAModel):
                 for _ in range(self.num_hidden_layers)
             ]
         )
+
+        self.modal_gate = Router(hidden_size=self.ori_emb_size +
+                                 self.text_emb_size, num_experts=2) if modal_gate else None
 
     def forward(self, log_seqs, ori_emb, text_emb):
         seqs = self.item_emb(log_seqs).to(self.device)
@@ -150,16 +163,25 @@ class MoEClipCA(CLIPCAModel):
         if self.hidden_size != self.ori_emb_size:
             enc_in = self.enc_in_proj(enc_in)
 
-        ## item encoder
+        # item encoder
         for enc in self.item_enc:
             enc_in = enc(enc_in, attn_mask)
 
         encoding_res = enc_in
         gen_emb = encoding_res
 
-        ## MoE CA
+        if self.hidden_size != self.ori_emb_size:
+            gen_emb = self.gen_emb_proj(gen_emb)
+
+        # MoE CA
         ori_emb = ori_emb.to(self.device)
         text_emb = text_emb.to(self.device)
+
+        if self.modal_gate is not None:
+            gate_scores = self.modal_gate(torch.concat(
+                (ori_emb, text_emb), dim=-1))  # (image, text)
+            ori_emb *= gate_scores[:, :, 0].unsqueeze(-1)
+            text_emb *= gate_scores[:, :, 1].unsqueeze(-1)
 
         concated_input = torch.cat((seqs, ori_emb, text_emb), dim=-1)
 
@@ -176,4 +198,3 @@ class MoEClipCA(CLIPCAModel):
         )
 
         return encoding_res, layer_out
-
