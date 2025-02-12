@@ -33,7 +33,7 @@ def clip_loss(item_embs, img_embs, logit_scale, epsilon: float = 1e-8) -> torch.
     img_embs = img_embs / (img_embs.norm(p=2, dim=-1, keepdim=True) + epsilon)
     item_embs = item_embs / item_embs.norm(p=2, dim=-1, keepdim=True)
     logit_scale = logit_scale.exp()
-    total_loss = 0
+    total_loss = []
     seq_len = img_embs.shape[1]
 
     for i in range(seq_len):
@@ -44,9 +44,10 @@ def clip_loss(item_embs, img_embs, logit_scale, epsilon: float = 1e-8) -> torch.
         item_loss = contrastive_loss(logits_per_item)
         image_loss = contrastive_loss(logits_per_item.t())
 
-        total_loss += ((item_loss + image_loss) / 2.0) / seq_len
+        if (not torch.isnan(item_loss)) and (not torch.isnan(image_loss)):
+            total_loss.append((item_loss + image_loss) / 2.0)
 
-    return total_loss
+    return sum(total_loss) / len(total_loss)
 
 
 class ScaledDotProductAttention(nn.Module):

@@ -71,7 +71,10 @@ class ARBlock(nn.Module):
         gen_item_ca_out, _ = self.CA_gen_item(img_ca_out, item_emb, item_emb, mask)
         gen_item_ca_out += residual_gen_item  # residual
 
-        block_out = self.pointwise_feedforward(self.layerNorm(gen_item_ca_out)) + gen_item_ca_out
+        block_out = (
+            self.pointwise_feedforward(self.layerNorm(gen_item_ca_out))
+            + gen_item_ca_out
+        )
         return block_out
 
 
@@ -82,6 +85,7 @@ class ARModel(nn.Module):
         hidden_size: int = 512,
         num_attention_heads: int = 4,
         num_hidden_layers: int = 3,
+        img_emb_size: int = 512,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
         max_len: int = 30,
         dropout_prob: float = 0.2,
@@ -98,8 +102,8 @@ class ARModel(nn.Module):
         self.pos_emb = pos_emb
         self.device = device
         self.hidden_size = hidden_size
-        self.gen_emb_size = 512
-        self.ori_emb_size = 512
+        self.gen_emb_size = img_emb_size
+        self.ori_emb_size = img_emb_size
 
         if self.gen_emb_size != self.hidden_size:
             self.projection_gen = nn.Linear(self.gen_emb_size, self.hidden_size)
@@ -111,7 +115,7 @@ class ARModel(nn.Module):
         self.emb_layernorm = nn.LayerNorm(hidden_size, eps=1e-6)
 
         if self.pos_emb:
-            self.positional_emb = nn.Embedding(max_len, hidden_size)
+            self.positional_emb = nn.Embedding(max_len, hidden_size, padding_idx=0)
 
         self.blocks = nn.ModuleList(
             [
@@ -130,7 +134,7 @@ class ARModel(nn.Module):
             .repeat(1, log_seqs.shape[1], 1)
             .unsqueeze(1)
             .to(self.device)
-        )  # padding + autoReg
+        )  #autoReg
 
         if ori_emb.shape[-1] != self.hidden_size:
             ori_emb = self.projection_ori(ori_emb)
@@ -150,7 +154,11 @@ class ARModel(nn.Module):
         for block in self.blocks:
             gen_emb, _ = block(seqs, ori_emb, gen_emb, attn_mask)
 
-        layer_out = self.out(gen_emb) if self.use_linear else gen_emb
+        layer_out = (
+            self.out(gen_emb)
+            if self.use_linear
+            else torch.matmul(gen_emb, self.item_emb.weight.T)
+        )
         return layer_out
 
 
@@ -163,6 +171,7 @@ class CLIPCAModel(ARModel):
         num_hidden_layers: int = 3,
         num_enc_layers: int = 2,
         num_enc_heads: int = 3,
+        img_emb_size: int = 512,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
         max_len: int = 30,
         dropout_prob: float = 0.2,
@@ -177,6 +186,7 @@ class CLIPCAModel(ARModel):
             hidden_size,
             num_attention_heads,
             num_hidden_layers,
+            img_emb_size,
             hidden_act,
             max_len,
             dropout_prob,
@@ -194,6 +204,7 @@ class CLIPCAModel(ARModel):
         )
         self.logit_scale = nn.Parameter(torch.tensor(logit_scale_init_value))
         self.enc_in_proj = nn.Linear(self.hidden_size, self.ori_emb_size)
+        self.gen_emb_proj = nn.Linear(self.ori_emb_size, self.hidden_size)
 
     def forward(self, log_seqs, ori_emb):
         seqs = self.item_emb(log_seqs).to(self.device)
