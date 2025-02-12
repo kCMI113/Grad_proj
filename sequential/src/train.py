@@ -5,50 +5,95 @@ from tqdm import tqdm
 import wandb
 from src.models.ARattn import ARModel, CLIPCAModel
 from src.models.MoEattn import MoEClipCA
+from src.models.TMoEattn import TMoEClipCA
 from src.models.common import clip_loss
 from src.utils import simple_ndcg_at_k_batch, simple_recall_at_k_batch
+from src.models.SASRec import SASRec
 
 
 def train(
-    model, optimizer, dataloader, criterion, alpha: float = 0.4, device: str = "cpu"
+    model,
+    optimizer,
+    dataloader,
+    criterion,
+    alpha: float = 0.4,
+    beta: float = None,
+    device: str = "cpu",
+    epoch: int = None,
+    loss_threshold : float = 0.2
 ):
     model.train()
     total_loss = 0
 
     with tqdm(dataloader) as t:
-        for tokens, labels, ori_emb, gen_emb, text_emb in t:
+        for tokens, labels, *args in t:
             tokens = tokens.to(device)
-            ori_emb = ori_emb.to(device)
-            gen_emb = gen_emb.to(device)
             labels = labels.to(device)
 
-            if isinstance(model, MoEClipCA):
-                enc_emb, logits  = model(tokens, ori_emb, text_emb)
-                contra_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
+            if isinstance(model, CLIPCAModel):
+                ori_emb, gen_emb, text_emb, prompt_emb = args
+                ori_emb = ori_emb.to(device)
+                gen_emb = gen_emb.to(device)
+                text_emb = text_emb.to(device)
+                prompt_emb = prompt_emb.to(device)
+
+            if isinstance(model, TMoEClipCA):
+                gen_res, prompt_res, logits = model(tokens, ori_emb, text_emb)
+                img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                contra_loss = alpha * img_loss + beta * text_loss
+                wandb.log(
+                    {
+                        "img_loss": img_loss.item(),
+                        "text_loss": text_loss.item(),
+                    }
+                )
+            elif isinstance(model, MoEClipCA):
+                enc_emb, logits = model(tokens, ori_emb, text_emb)
+                img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
+                wandb.log(
+                    {
+                        "img_loss": img_loss.item(),
+                    }
+                )
+                contra_loss = alpha * img_loss
             elif isinstance(model, CLIPCAModel):
                 enc_emb, logits = model(tokens, ori_emb)
-                contra_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
+                img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
+                wandb.log(
+                    {
+                        "img_loss": img_loss.item(),
+                    }
+                )
+                contra_loss = alpha * img_loss
             elif isinstance(model, ARModel):
                 logits = model(tokens, ori_emb, gen_emb)
-            
+            elif isinstance(model, SASRec):
+                logits = model(tokens)
 
             rec_loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
 
-            loss = (
-                (1 - alpha) * rec_loss + alpha * contra_loss
-                if isinstance(model, CLIPCAModel)
-                else rec_loss
-            )
+            # loss = (
+            #     rec_loss + contra_loss if isinstance(model, CLIPCAModel) else rec_loss
+            # )
+            if isinstance(model, CLIPCAModel):
+                loss = (rec_loss + contra_loss) if alpha <= loss_threshold else contra_loss
+                wandb.log(
+                    {
+                        "contra_loss": contra_loss.item(),
+                    }
+                )
+            else:
+                loss = rec_loss
+
             t.set_postfix(loss=loss.item())
             wandb.log(
                 {
                     "batch_loss": loss.item(),
-                    "contra_loss": contra_loss.item(),
                     "rec_loss": rec_loss.item(),
                 }
             )
             total_loss += loss.item()
-
             model.zero_grad()
             loss.backward()
             optimizer.step()
@@ -63,7 +108,9 @@ def eval(
     criterion,
     train_data,
     alpha: float = 0.4,
+    beta: float = None,
     device: str = "cpu",
+    loss_threshold: float = 0.2,
 ):
     model.eval()
     metrics_batches = {
@@ -75,81 +122,108 @@ def eval(
 
     with torch.no_grad():
         with tqdm(dataloader) as t:
-            for users, tokens, labels, ori_emb, gen_emb, text_emb in t:
+            for _, tokens, labels, *args in t:
                 tokens = tokens.to(device)
-                ori_emb = ori_emb.to(device)
-                gen_emb = gen_emb.to(device)
                 labels = labels.to(device)
 
-                if isinstance(model, CLIPCAModel):
-                    enc_emb, logits = model(tokens, ori_emb)
-                elif isinstance(model, (ARModel)):
-                    logits = model(tokens, ori_emb, gen_emb)
-                elif isinstance(model, MoEClipCA):
-                    logits = model(tokens, ori_emb, gen_emb, text_emb)
+            if isinstance(model, CLIPCAModel):
+                ori_emb, gen_emb, text_emb, prompt_emb = args
+                ori_emb = ori_emb.to(device)
+                gen_emb = gen_emb.to(device)
+                text_emb = text_emb.to(device)
+                prompt_emb = prompt_emb.to(device)
 
+            if isinstance(model, TMoEClipCA):
+                gen_res, prompt_res, logits = model(tokens, ori_emb, text_emb)
                 if mode == "valid":
-                    rec_loss = criterion(
-                        logits.view(-1, logits.size(-1)), labels.view(-1)
-                    )
-                    if isinstance(model, CLIPCAModel):
-                        contra_loss = alpha * clip_loss(
-                            enc_emb, gen_emb, model.logit_scale
-                        )
-
-                    loss = (
-                        (1 - alpha) * rec_loss + alpha * contra_loss
-                        if isinstance(model, CLIPCAModel)
-                        else rec_loss
-                    )
-                    t.set_postfix(loss=loss.item())
+                    img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                    contra_loss = alpha * img_loss + beta * text_loss
                     wandb.log(
                         {
-                            "valid_batch_loss": loss.item(),
-                            "valid_contra_loss": contra_loss.item(),
-                            "vallid_rec_loss": rec_loss.item(),
+                            "valid_img_loss": img_loss.item(),
+                            "valid_text_loss": text_loss.item(),
                         }
                     )
-                    total_loss += loss
+            elif isinstance(model, MoEClipCA):
+                enc_emb, logits = model(tokens, ori_emb, text_emb)
+                contra_loss = (
+                    alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
+                    if mode == "valid"
+                    else None
+                )
+            elif isinstance(model, CLIPCAModel):
+                enc_emb, logits = model(tokens, ori_emb)
+                contra_loss = (
+                    alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
+                    if mode == "valid"
+                    else None
+                )
+            elif isinstance(model, ARModel):
+                logits = model(tokens, ori_emb, gen_emb)
+            elif isinstance(model, SASRec):
+                logits = model(tokens)
 
-                ### GET METRICS ###
+            if mode == "valid":
+                rec_loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
+                if isinstance(model, CLIPCAModel):
+                    loss = rec_loss + contra_loss if alpha <= loss_threshold else contra_loss
+                    wandb.log(
+                        {
+                            "valid_contra_loss": contra_loss.item(),
+                        }
+                    )
+                else:
+                    loss = rec_loss
 
-                used_items_batch = [
-                    np.unique(train_data[user]) for user in users.cpu().numpy()
-                ]
-                target_batch = labels[:, -1]
-                user_res_batch = -logits[:, -1, 1:]
-
-                # for i, used_item_list in enumerate(used_items_batch):
-                #     user_res_batch[i][used_item_list] = user_res_batch[i].max() + 1
-
-                # sorted item id e.g. [3452(1st), 7729(2nd), ... ]
-                item_rank_batch = user_res_batch.argsort()
-
-                # if mode == "test":
-                #     pred_list.append(
-                #         torch.concat(
-                #             (item_rank_batch[:, :40], target_batch.unsqueeze(1)), dim=1
-                #         )
-                #     )
-
-                # rank of items e.g. index: item_id(0~), item_rank[0] : rank of item_id 0
-                item_rank_batch = (
-                    item_rank_batch.argsort()
-                    .gather(dim=1, index=target_batch.view(-1, 1) - 1)
-                    .squeeze()
+                t.set_postfix(loss=loss.item())
+                wandb.log(
+                    {
+                        "valid_batch_loss": loss.item(),
+                        "valid_rec_loss": rec_loss.item(),
+                    }
                 )
 
-                for k in [1, 5, 10, 20, 40]:
-                    recall = simple_recall_at_k_batch(k, item_rank_batch)
-                    ndcg = simple_ndcg_at_k_batch(k, item_rank_batch)
+                total_loss += loss
 
-                    metrics_batches["R" + str(k)] = torch.cat(
-                        (metrics_batches["R" + str(k)], recall)
-                    )
-                    metrics_batches["N" + str(k)] = torch.cat(
-                        (metrics_batches["N" + str(k)], ndcg)
-                    )
+            ### GET METRICS ###
+
+            # used_items_batch = [
+            #     np.unique(train_data[user]) for user in users.cpu().numpy()
+            # ]
+            target_batch = labels[:, -1]
+            user_res_batch = -logits[:, -1, 1:]
+
+            # for i, used_item_list in enumerate(used_items_batch):
+            #     user_res_batch[i][used_item_list] = user_res_batch[i].max() + 1
+
+            # sorted item id e.g. [3452(1st), 7729(2nd), ... ]
+            item_rank_batch = user_res_batch.argsort()
+
+            # if mode == "test":
+            #     pred_list.append(
+            #         torch.concat(
+            #             (item_rank_batch[:, :40], target_batch.unsqueeze(1)), dim=1
+            #         )
+            #     )
+
+            # rank of items e.g. index: item_id(0~), item_rank[0] : rank of item_id 0
+            item_rank_batch = (
+                item_rank_batch.argsort()
+                .gather(dim=1, index=target_batch.view(-1, 1) - 1)
+                .squeeze()
+            )
+
+            for k in [1, 5, 10, 20, 40]:
+                recall = simple_recall_at_k_batch(k, item_rank_batch)
+                ndcg = simple_ndcg_at_k_batch(k, item_rank_batch)
+
+                metrics_batches["R" + str(k)] = torch.cat(
+                    (metrics_batches["R" + str(k)], recall)
+                )
+                metrics_batches["N" + str(k)] = torch.cat(
+                    (metrics_batches["N" + str(k)], ndcg)
+                )
 
         for k in [1, 5, 10, 20, 40]:
             metrics_batches["R" + str(k)] = metrics_batches["R" + str(k)].mean()

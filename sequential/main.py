@@ -6,18 +6,20 @@ import shutil
 import dotenv
 import torch
 import torch.nn as nn
-from accelerate import Accelerator
-from huggingface_hub import snapshot_download, HfApi
 
-from recbole.model.loss import BPRLoss
-from torch.optim import Adam, lr_scheduler
+# from accelerate import Accelerator
+from huggingface_hub import HfApi, snapshot_download
+
+# from recbole.model.loss import BPRLoss
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import wandb
 from src import dataset as DS
 from src.models.ARattn import ARModel, CLIPCAModel
 from src.models.MoEattn import MoEClipCA
-from src.sampler import HardNegSampler, NegSampler
+from src.models.SASRec import SASRec
+from src.models.TMoEattn import TMoEClipCA
 from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 
@@ -28,7 +30,13 @@ def main(args):
     ############# SETTING #############
     setting_yaml_path = f"./settings/{args.config}.yaml"
     timestamp = get_timestamp()
-    models = {"AR": ARModel, "CLIPCA": CLIPCAModel, "MoE": MoEClipCA}
+    models = {
+        "AR": ARModel,
+        "CLIPCA": CLIPCAModel,
+        "MoE": MoEClipCA,
+        "TMoE": TMoEClipCA,
+        "SASRec": SASRec,
+    }
     seed_everything()
     mk_dir("./model")
     mk_dir("./data")
@@ -39,16 +47,36 @@ def main(args):
     model_name: str = settings["model_name"]
     model_args: dict = settings["model_arguments"]
     model_dataset: dict = settings["model_dataset"]
+
     settings["experiment_name"] = (
         f"work-{timestamp}_{model_name}_"
-        + f'{settings['batch_size']}_{model_args["hidden_size"]}_{model_args["num_attention_heads"]}_{model_args["num_hidden_layers"]}_{settings["lr"]}_{settings["weight_decay"]}'
+        + f'{settings["batch_size"]}_{model_args["hidden_size"]}_{model_args["num_attention_heads"]}_{model_args["num_hidden_layers"]}_{settings["lr"]}_{settings["weight_decay"]}'
         + (
-            ""
-            if model_name == "AR"
-            else f'_{model_args["num_enc_layers"]}_{model_args["num_enc_heads"]}_{settings["alpha"]}_{settings["schedule_rate"]}'
+            f'_{model_args["num_enc_layers"]}_{model_args["num_enc_heads"]}_{settings["loss_threshold"]}_({settings["alpha"]}|{settings["alpha_threshold"]})_{settings["schedule_rate"]}'
+            if model_name not in ["SASRec"]
+            else ""
         )
-        + ("_useLinear" if model_args["use_linear"] else "")
+        + (
+            f"_({settings['beta']}|{settings['beta_threshold']})"
+            if model_name == "TMoE"
+            else ""
+        )
+        + (
+            "_useLinear"
+            if model_name not in ["SASRec"] and model_args["use_linear"]
+            else ""
+        )
         + ("_shuffle" if settings["shuffle"] else "")
+        + (
+            "_" + model_args["text_model"]
+            if model_name not in ["SASRec"] and model_args["text_model"] != "fclip"
+            else ""
+        )
+        + (
+            "_" + model_args["img_model"]
+            if model_name not in ["SASRec"] and model_args["img_model"] != "fclip"
+            else ""
+        )
     )
 
     shutil.copy(setting_yaml_path, f"./model/{timestamp}/setting.yaml")
@@ -104,20 +132,29 @@ def main(args):
     }
 
     print("-------------LOAD DATA-------------")
-    metadata = load_json(f"{path}/20_core_metadata.json")
+    metadata = load_json(f"{path}/uniqued_metadata.json")
     # train_data = torch.load(f"./data/xs/train_data_new_xs.pt")
-    test_data = torch.load(f"{path}/uniqued_test_data_xs.pt")
+    test_data = torch.load(f"{path}/uniqued_test_data.pt")
     valid_data = [v[:-1] for v in test_data]
-    train_data = [v[:-2] for v in test_data]
+    train_data = [v[:-1] for v in valid_data]
     # _parameter["gen_img_emb"] = torch.load(f"./data/xs/gen_emb_new_dict.pt")
-    _parameter["ori_img_emb"] = torch.load(f"{path}/idx2img_emb.pt")
-    _parameter["text_emb"] = torch.load(f"{path}/idx2text_emb.pt")
+    # _parameter["ori_img_emb"] = torch.load(f"{path}/idx_img_emb_map.pt")
+    # _parameter["text_emb"] = torch.load(f"{path}/idx_text_emb_map.pt")
+    if model_name not in ["SASRec"]:
+        _parameter["ori_img_emb"] = torch.load(
+            f"{path}/idx_img_emb_map{'_'+model_args['img_model'] if model_args['img_model'] != 'fclip' else ''}.pt"
+        )
+        _parameter["text_emb"] = torch.load(
+            f"{path}/idx_text_emb_map{'_'+model_args['text_model'] if model_args['text_model'] != 'fclip' else ''}.pt"
+        )
+        model_args["text_emb_size"] = _parameter["text_emb"][0].shape[-1]
+        model_args["img_emb_size"] = _parameter["ori_img_emb"][0].shape[-1]
 
-    num_user = len(test_data)
-    num_item = len(_parameter["ori_img_emb"])
+    _parameter["num_user"] = metadata["num of user"]
+    _parameter["num_item"] = metadata["num of item"]
+    model_args["num_user"] = metadata["num of user"]
+    model_args["num_item"] = metadata["num of item"]
 
-    _parameter["num_user"] = num_user
-    _parameter["num_item"] = num_item
     print(_parameter["num_user"], _parameter["num_item"])
 
     print("-------------COMPLETE LOAD DATA-------------")
@@ -162,7 +199,7 @@ def main(args):
 
     model = model_class_(
         **model_args,
-        num_item=num_item,
+        # num_item=_parameter["num_item"],
         device=device,
     ).to(device)
 
@@ -177,11 +214,19 @@ def main(args):
             optimizer=optimizer,
             dataloader=train_dataloader,
             criterion=criterion,
-            alpha=settings["alpha"],
+            alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
+            beta=settings["beta"] if model_name == "TMoE" else None,
             device=device,
+            epoch=i,
+            loss_threshold=(
+                settings["loss_threshold"] if isinstance(model, CLIPCAModel) else None
+            ),
         )
         print(
-            f'EPOCH : {i+1} | TRAIN LOSS : {train_loss} | ALPHA : {settings["alpha"]}'
+            f"EPOCH : {i+1} | TRAIN LOSS : {train_loss}"
+            + f'| ALPHA : {settings["alpha"]}'
+            if isinstance(model, CLIPCAModel)
+            else ""
         )
         wandb.log({"loss": train_loss, "epoch": i + 1})
 
@@ -196,8 +241,14 @@ def main(args):
                 dataloader=valid_dataloader,
                 criterion=criterion,
                 train_data=train_data,
-                alpha=settings["alpha"],
+                alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
+                beta=settings["beta"] if model_name == "TMoE" else None,
                 device=device,
+                loss_threshold=(
+                    settings["loss_threshold"]
+                    if isinstance(model, CLIPCAModel)
+                    else None
+                ),
             )
             print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
             print(
@@ -231,7 +282,13 @@ def main(args):
                 criterion=criterion,
                 train_data=valid_data,
                 device=device,
-                alpha=settings["alpha"],
+                alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
+                beta=settings["beta"] if model_name == "TMoE" else None,
+                loss_threshold=(
+                    settings["loss_threshold"]
+                    if isinstance(model, CLIPCAModel)
+                    else None
+                ),
             )
             print(
                 (
@@ -241,12 +298,27 @@ def main(args):
             )
             test_metrics["epoch"] = i + 1
             wandb.log(test_metrics)
-            settings["alpha"] = (
-                settings["alpha"] - settings["schedule_rate"]
-                if settings["alpha"] - settings["schedule_rate"] > 0.15
-                else 0.15
-            )  # update alpha
-            wandb.log({"epoch": i + 1, "alpha": settings["alpha"]})
+
+            if isinstance(model, CLIPCAModel):
+                if settings["alpha"] <= settings["schedule_rate"]:
+                    settings["schedule_rate"] /= 10
+
+                settings["alpha"] = (
+                    settings["alpha"] - settings["schedule_rate"]
+                    if settings["alpha"] - settings["schedule_rate"]
+                    > settings["alpha_threshold"]
+                    else settings["alpha_threshold"]
+                )  # update alpha
+                wandb.log({"epoch": i + 1, "alpha": settings["alpha"]})
+
+                if model_name == "TMoE":
+                    settings["beta"] = (
+                        settings["beta"] - settings["schedule_rate"]
+                        if settings["beta"] - settings["schedule_rate"]
+                        > settings["beta_threshold"]
+                        else settings["beta_threshold"]
+                    )  # update beta
+                    wandb.log({"epoch": i + 1, "beta": settings["beta"]})
 
     print("-------------FINAL EVAL-------------")
     test_metrics = eval(
@@ -256,7 +328,11 @@ def main(args):
         criterion=criterion,
         train_data=valid_data,
         device=device,
-        alpha=settings["alpha"],
+        alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
+        beta=settings["beta"] if model_name == "TMoE" else None,
+        loss_threshold=(
+            settings["loss_threshold"] if isinstance(model, CLIPCAModel) else None
+        ),
     )
     print(
         (
@@ -265,16 +341,17 @@ def main(args):
         )
     )
     print("#################### SAVE MODEL CHECKPOINT ####################")
-    model_save_path = f"model/{timestamp}/{settings["experiment_name"]}"
+    model_save_path = f"model/{timestamp}/{settings['experiment_name']}"
     if not os.path.exists(model_save_path):
         os.makedirs(model_save_path)
     torch.save(model.state_dict(), f"{model_save_path}/final_weights.pt")
     wandb.save(f"model/{model_save_path}/final_weights.pt")
     # Upload to Huggingface Hub
+
     api = HfApi()
     api.upload_folder(
         folder_path=model_save_path,
-        repo_id="SLKpnu/mmp_hm",
+        repo_id="SLKpnu/mmp_fashion",
         path_in_repo=model_save_path.split("/")[1],
         commit_message=f"{model_name}_{model_save_path.split('/')[1]} | run_name : "
         + settings["experiment_name"],
@@ -295,7 +372,7 @@ if __name__ == "__main__":
         dest="config",
         action="store",
         required=False,
-        default="MoE",
+        default="TMoE",
     )
     args = parser.parse_args()
     main(args)
