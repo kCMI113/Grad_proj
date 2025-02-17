@@ -11,11 +11,11 @@ model_dataset:
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
-  hidden_size: 256        # hidden size for multi head attention
-  num_attention_heads: 4  # number of heads for multi head attention
+  hidden_size: 64        # hidden size for multi head attention
+  num_attention_heads: 2  # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
   num_enc_layers: 3    # number of item encoder's attention layers
-  num_enc_heads: 8
+  num_enc_heads: 2
   max_len: 70             # length of input sequence
   dropout_prob: 0.2       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
@@ -24,17 +24,17 @@ model_arguments:
   loss: 'CE'              # ["CE", "BPR"]
   num_experts: 3            # num of experts(modality) (id, img, text)
   aggr: 'top1'            # ['mean', 'top1']
-  modal_gate: True        # vison text modal gate
+  modal_gate: True       # vison text modal gate
 
  
-lr: 0.001
-alpha: 0.3 # image loss weight
-schedule_rate: 0
+lr: 0.0005
+alpha: 0.6 # image loss weight
+schedule_rate: 0.05
 loss_threshold : 0.4
-alpha_threshold: 0.05
+alpha_threshold: 0.1
 
 
-epoch: 100
+epoch: 150
 batch_size: 256 
 shuffle: True       # shuffle dataloader
 weight_decay: 0.001  # weight decay for Adam
@@ -46,4 +46,4 @@ data_repo: "hm_15_core"
 dataset: 
 data_version: "9d8783944a6c9884913a5fc63e28b407f2210067"
 
-n_cuda: "0"
+n_cuda: "2"

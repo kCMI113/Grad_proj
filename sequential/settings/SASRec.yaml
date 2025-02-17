@@ -9,7 +9,7 @@ model_dataset:
   test_dataset: "SASDataset"
 
 model_arguments:
-  hidden_size: 256        # hidden size for multi head attention
+  hidden_size: 128        # hidden size for multi head attention
   num_attention_heads: 4  # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
   max_len: 70             # length of input sequence
@@ -18,18 +18,18 @@ model_arguments:
   loss: 'CE'              # ["CE", "BPR"]
 
  
-lr: 0.00001
+lr: 0.001
 
-epoch: 100
-batch_size: 256 
+epoch: 200
+batch_size: 128 
 shuffle: False       # shuffle dataloader
-weight_decay: 0.00001 # weight decay for Adam
+weight_decay: 0.003 # weight decay for Adam
 num_workers: 8
 valid_step: 3 # number of steps to run validation
 
 data_local: False       # True if loading dataset from local directory, else download from huggingface hub
-data_repo: "hm_15_core"
+data_repo: "amazon_2014_5_core"
 dataset: 
-data_version: "9d8783944a6c9884913a5fc63e28b407f2210067"
+data_version: "9915fb18704305458c006fcedc8aec5abf2f1180"
 
-n_cuda: "3"
+n_cuda: "1"
