@@ -31,6 +31,7 @@ class TMoEClipCA(MoEClipCA):
         use_linear: bool = True,  # True if using linear layer at last
         logit_scale_init_value: float = 2.6592,
         device: str = "cpu",
+        modal_gate: bool = False,
         **kwargs
     ):
         super().__init__(
@@ -50,16 +51,13 @@ class TMoEClipCA(MoEClipCA):
             use_linear,
             logit_scale_init_value,
             device,
+            modal_gate,
         )
 
         if self.hidden_size != self.text_emb_size:
             self.enc_in_proj = nn.Linear(self.hidden_size, self.text_emb_size)
         if self.text_emb_size != self.gen_emb_size:
             self.gen_in_proj = nn.Linear(self.text_emb_size, self.gen_emb_size)
-        if self.text_emb_size + self.gen_emb_size != self.hidden_size:
-            self.fuser = nn.Linear(
-                self.text_emb_size + self.gen_emb_size, self.hidden_size
-            )
 
         self.item_enc = nn.ModuleList(
             [
@@ -79,6 +77,23 @@ class TMoEClipCA(MoEClipCA):
             ]
         )
 
+        self.modal_projection = nn.Linear(
+            self.gen_emb_size + self.hidden_size, self.hidden_size
+        )
+
+        if not modal_gate and (
+            (self.text_emb_size + self.gen_emb_size) != self.hidden_size
+        ):
+            self.fuser = nn.Linear(
+                self.text_emb_size + self.gen_emb_size,
+                self.hidden_size,
+            )
+        if modal_gate and (self.text_emb_size != self.hidden_size):
+            self.fuser = nn.Linear(
+                self.text_emb_size,
+                self.hidden_size,
+            )
+
     def forward(self, log_seqs, ori_emb, text_emb):
         seqs = self.item_emb(log_seqs).to(self.device)
 
@@ -94,9 +109,9 @@ class TMoEClipCA(MoEClipCA):
                 np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1]
             )
             seqs += self.positional_emb(torch.tensor(positions).to(self.device))
-        # seqs = self.emb_layernorm(self.dropout(seqs))
+        seqs = self.emb_layernorm(self.dropout(seqs))
 
-        # get prompt
+        ## get prompt
         enc_in = seqs
         if self.hidden_size != self.text_emb_size:
             enc_in = self.enc_in_proj(enc_in)
@@ -106,6 +121,7 @@ class TMoEClipCA(MoEClipCA):
 
         prompt_res = enc_in
 
+        ## get gen_img
         if self.text_emb_size != self.gen_emb_size:
             enc_in = self.gen_in_proj(enc_in)
 
@@ -114,17 +130,35 @@ class TMoEClipCA(MoEClipCA):
 
         gen_emb = enc_in
 
-        mm_info = torch.concat((prompt_res, gen_emb), dim=-1)
-        if mm_info.shape[-1] != self.hidden_size:
-            mm_info = self.fuser(mm_info)
-
-        ## MoE CA
         ori_emb = ori_emb.to(self.device)
         text_emb = text_emb.to(self.device)
 
-        concated_input = torch.cat((seqs, ori_emb, text_emb), dim=-1)
+        ## Modal Gating
+        if self.modal_gate is not None:
+            gate_scores, top_k_idx = self.modal_gate(
+                torch.concat((gen_emb, prompt_res), dim=-1)
+            )  # (image, text)
+            top_k_idx = top_k_idx.unsqueeze(-1)
+            # batch X seg_len X 2 X emb_size
+            gen_mm = torch.stack((gen_emb, prompt_res), dim=-2)
+            gen_mm = torch.gather(
+                gen_mm, dim=2, index=top_k_idx.expand(-1, -1, -1, gen_mm.size(-1))
+            ).squeeze(-2)
+            mm_info = torch.stack((ori_emb, text_emb), dim=-2)
+            mm_info = torch.gather(
+                mm_info, dim=2, index=top_k_idx.expand(-1, -1, -1, gen_mm.size(-1))
+            ).squeeze(-2)
+            concated_input = torch.cat((seqs, mm_info), dim=-1)
+
+        else:
+            concated_input = torch.cat((seqs, ori_emb, text_emb), dim=-1)
+            mm_info = torch.concat((gen_emb, prompt_res), dim=-1)
+
         if concated_input.shape[-1] != self.hidden_size:
             concated_input = self.modal_projection(concated_input)
+
+        if mm_info.shape[-1] != self.hidden_size:
+            mm_info = self.fuser(mm_info)
 
         for block in self.blocks:
             mm_info = block(concated_input, mm_info, attn_mask)
@@ -135,4 +169,11 @@ class TMoEClipCA(MoEClipCA):
             else torch.matmul(mm_info, self.item_emb.weight.T)
         )
 
-        return gen_emb, prompt_res, layer_out
+        if self.modal_gate is not None:
+            return (
+                gen_emb,
+                prompt_res,
+                layer_out,
+                torch.mean(top_k_idx.to(torch.float32)),
+            )
+        return gen_emb, prompt_res, layer_out, torch.tensor([-1])

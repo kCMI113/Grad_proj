@@ -26,14 +26,14 @@ class Router(nn.Module):
 
     def forward(self, x):
         gate_scores = F.softmax(self.w(x), dim=-1)
-        capacity = int(self.capacity_factor * x.size(0))
-        _, top_k_idx = gate_scores.topk(1, dim=-1)
-        mask = torch.zeros_like(gate_scores).scatter_(1, top_k_idx, 1)
-        masked_gate_scores = gate_scores * mask
-        denominators = masked_gate_scores.sum(0, keepdim=True) + self.epsilon
-        gate_scores = (masked_gate_scores / denominators) * capacity
+        # capacity = int(self.capacity_factor * x.size(0))
+        gate_scores, top_k_idx = gate_scores.topk(1, dim=-1)
+        # mask = torch.zeros_like(gate_scores).scatter_(1, top_k_idx, 1)
+        # masked_gate_scores = gate_scores * mask
+        # denominators = masked_gate_scores.sum(0, keepdim=True) + self.epsilon
+        # gate_scores = (masked_gate_scores / denominators) * capacity
 
-        return gate_scores
+        return gate_scores, top_k_idx
 
 
 class MoEAttenBlock(nn.Module):
@@ -46,8 +46,7 @@ class MoEAttenBlock(nn.Module):
         hidden_act="gelu",
     ):
         super().__init__()
-        self.CA = MultiHeadAttention(
-            num_attention_heads, hidden_size, dropout_prob)
+        self.CA = MultiHeadAttention(num_attention_heads, hidden_size, dropout_prob)
         self.experts = nn.ModuleList(
             [
                 PositionwiseFeedForward(hidden_size, dropout_prob, hidden_act)
@@ -66,20 +65,25 @@ class MoEAttenBlock(nn.Module):
             self.layerNorm(gen_emb),
         )
 
-        img_ca_out, _ = self.CA(gen_emb, concated_input, concated_input, mask)
-        img_ca_out += residual_gen  # residual
-        ln_img_ca_out = self.layerNorm(img_ca_out)  # pre-ln
+        ca_out, _ = self.CA(gen_emb, concated_input, concated_input, mask)
+        ca_out += residual_gen  # residual
+        ln_ca_out = self.layerNorm(ca_out)  # pre-ln
 
-        gate_scores = self.gate(img_ca_out)
-        expert_outputs = [expert(ln_img_ca_out) for expert in self.experts]
-        stacked_expert_outputs = torch.stack(expert_outputs, dim=-1)
-
-        moe_output = (
-            torch.sum(gate_scores.unsqueeze(-2) *
-                      stacked_expert_outputs, dim=-1)
-            + ln_img_ca_out
-        )  # skip-connection
-
+        gate_scores, top_k_idx = self.gate(ca_out)
+        selected_expert_outputs = torch.stack(
+            [expert(ln_ca_out) for expert in self.experts], dim=-2
+        )
+        selected_expert_outputs = torch.gather(
+            selected_expert_outputs,
+            dim=-2,
+            index=top_k_idx.unsqueeze(-1).expand(
+                -1, -1, -1, selected_expert_outputs.size(-1)
+            ),
+        )
+        # moe_output = (
+        #     torch.sum(gate_scores * selected_expert_outputs, dim=-1) + ln_img_ca_out
+        # )  # skip-connection
+        moe_output = selected_expert_outputs.squeeze(-2) + ln_ca_out  # skip-connection
         return moe_output
 
 
@@ -139,8 +143,11 @@ class MoEClipCA(CLIPCAModel):
             ]
         )
 
-        self.modal_gate = Router(hidden_size=self.ori_emb_size +
-                                 self.text_emb_size, num_experts=2) if modal_gate else None
+        self.modal_gate = (
+            Router(hidden_size=self.gen_emb_size + self.text_emb_size, num_experts=2)
+            if modal_gate
+            else None
+        )
 
     def forward(self, log_seqs, ori_emb, text_emb):
         seqs = self.item_emb(log_seqs).to(self.device)
@@ -178,8 +185,9 @@ class MoEClipCA(CLIPCAModel):
         text_emb = text_emb.to(self.device)
 
         if self.modal_gate is not None:
-            gate_scores = self.modal_gate(torch.concat(
-                (ori_emb, text_emb), dim=-1))  # (image, text)
+            gate_scores = self.modal_gate(
+                torch.concat((ori_emb, text_emb), dim=-1)
+            )  # (image, text)
             ori_emb *= gate_scores[:, :, 0].unsqueeze(-1)
             text_emb *= gate_scores[:, :, 1].unsqueeze(-1)
 
