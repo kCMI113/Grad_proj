@@ -20,7 +20,7 @@ def train(
     beta: float = None,
     device: str = "cpu",
     epoch: int = None,
-    loss_threshold : float = 0.2
+    loss_threshold: float = 0.2,
 ):
     model.train()
     total_loss = 0
@@ -38,7 +38,9 @@ def train(
                 prompt_emb = prompt_emb.to(device)
 
             if isinstance(model, TMoEClipCA):
-                gen_res, prompt_res, logits = model(tokens, ori_emb, text_emb)
+                gen_res, prompt_res, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
                 img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
                 text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
                 contra_loss = alpha * img_loss + beta * text_loss
@@ -46,8 +48,10 @@ def train(
                     {
                         "img_loss": img_loss.item(),
                         "text_loss": text_loss.item(),
+                        "gate_mean": gate_mean.item(),
                     }
                 )
+                rec_w = 1 - alpha - beta
             elif isinstance(model, MoEClipCA):
                 enc_emb, logits = model(tokens, ori_emb, text_emb)
                 img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
@@ -57,6 +61,7 @@ def train(
                     }
                 )
                 contra_loss = alpha * img_loss
+                rec_w = 1 - alpha
             elif isinstance(model, CLIPCAModel):
                 enc_emb, logits = model(tokens, ori_emb)
                 img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
@@ -66,6 +71,7 @@ def train(
                     }
                 )
                 contra_loss = alpha * img_loss
+                rec_w = 1 - alpha
             elif isinstance(model, ARModel):
                 logits = model(tokens, ori_emb, gen_emb)
             elif isinstance(model, SASRec):
@@ -77,7 +83,11 @@ def train(
             #     rec_loss + contra_loss if isinstance(model, CLIPCAModel) else rec_loss
             # )
             if isinstance(model, CLIPCAModel):
-                loss = (rec_loss + contra_loss) if alpha <= loss_threshold else contra_loss
+                loss = (
+                    (rec_w * rec_loss + contra_loss)
+                    if alpha <= loss_threshold
+                    else contra_loss
+                )
                 wandb.log(
                     {
                         "contra_loss": contra_loss.item(),
@@ -86,7 +96,11 @@ def train(
             else:
                 loss = rec_loss
 
-            t.set_postfix(loss=loss.item())
+            t.set_postfix(
+                {"loss": loss.item(), "gm": gate_mean.item()}
+                if isinstance(model, TMoEClipCA)
+                else {"loss": loss.item()}
+            )
             wandb.log(
                 {
                     "batch_loss": loss.item(),
@@ -134,7 +148,9 @@ def eval(
                 prompt_emb = prompt_emb.to(device)
 
             if isinstance(model, TMoEClipCA):
-                gen_res, prompt_res, logits = model(tokens, ori_emb, text_emb)
+                gen_res, prompt_res, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
                 if mode == "valid":
                     img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
                     text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
@@ -143,6 +159,7 @@ def eval(
                         {
                             "valid_img_loss": img_loss.item(),
                             "valid_text_loss": text_loss.item(),
+                            "valid_gate_mean": gate_mean.item(),
                         }
                     )
             elif isinstance(model, MoEClipCA):
@@ -167,7 +184,11 @@ def eval(
             if mode == "valid":
                 rec_loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
                 if isinstance(model, CLIPCAModel):
-                    loss = rec_loss + contra_loss if alpha <= loss_threshold else contra_loss
+                    loss = (
+                        (1 - alpha) * rec_loss + contra_loss
+                        if alpha <= loss_threshold
+                        else contra_loss
+                    )
                     wandb.log(
                         {
                             "valid_contra_loss": contra_loss.item(),

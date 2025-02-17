@@ -68,6 +68,16 @@ def main(args):
         )
         + ("_shuffle" if settings["shuffle"] else "")
         + (
+            "_modal_gate"
+            if model_name in ["MoE", "TMoE"] and model_args["modal_gate"]
+            else ""
+        )
+        + (
+            f"_{model_args['num_experts']}"
+            if model_name in ["MoE", "TMoE"] and model_args["num_experts"]
+            else ""
+        )
+        + (
             "_" + model_args["text_model"]
             if model_name not in ["SASRec"] and model_args["text_model"] != "fclip"
             else ""
@@ -78,7 +88,6 @@ def main(args):
             else ""
         )
     )
-
     shutil.copy(setting_yaml_path, f"./model/{timestamp}/setting.yaml")
 
     ############ SET HYPER PARAMS #############
@@ -224,9 +233,11 @@ def main(args):
         )
         print(
             f"EPOCH : {i+1} | TRAIN LOSS : {train_loss}"
-            + f'| ALPHA : {settings["alpha"]}'
-            if isinstance(model, CLIPCAModel)
-            else ""
+            + (
+                f'| ALPHA : {settings["alpha"]}'
+                if isinstance(model, CLIPCAModel)
+                else ""
+            )
         )
         wandb.log({"loss": train_loss, "epoch": i + 1})
 
