@@ -125,7 +125,9 @@ def train(
 
             t.set_postfix(
                 {"loss": loss.item(), "gm": gate_mean.item()}
-                if isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M))
+                if isinstance(
+                    model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M, TMoEClipCA_C)
+                )
                 else {"loss": loss.item()}
             )
             wandb.log(
@@ -183,8 +185,10 @@ def eval(
                     img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
                     text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
                     cosine_loss = 1 - torch.cosine_similarity(
-                        gen_mm, item_emb(labels), dim=-1
+                        gen_mm, item_emb[labels], dim=-1
                     )
+                    mask = labels != 0
+                    cosine_loss = cosine_loss[mask].mean()
                     contra_loss = (
                         alpha * img_loss + beta * text_loss + theta * cosine_loss
                     )
