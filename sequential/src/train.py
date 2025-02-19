@@ -194,10 +194,10 @@ def eval(
                     )
                     wandb.log(
                         {
-                            "img_loss": img_loss.item(),
-                            "text_loss": text_loss.item(),
-                            "cosine_loss": cosine_loss.item(),
-                            "gate_mean": gate_mean.item(),
+                            "valid_img_loss": img_loss.item(),
+                            "valid_text_loss": text_loss.item(),
+                            "valid_cosine_loss": cosine_loss.item(),
+                            "valid_gate_mean": gate_mean.item(),
                         }
                     )
                     rec_w = 1 - alpha - beta - theta
