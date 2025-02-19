@@ -5,7 +5,12 @@ from tqdm import tqdm
 import wandb
 from src.models.ARattn import ARModel, CLIPCAModel
 from src.models.MoEattn import MoEClipCA
-from src.models.TMoEattn import TMoEClipCA
+from src.models.TMoEattn import (
+    TMoEClipCA,
+    TMoEClipCA_lienar,
+    TMoEClipCA_M,
+    TMoEClipCA_C,
+)
 from src.models.common import clip_loss
 from src.utils import simple_ndcg_at_k_batch, simple_recall_at_k_batch
 from src.models.SASRec import SASRec
@@ -18,6 +23,7 @@ def train(
     criterion,
     alpha: float = 0.4,
     beta: float = None,
+    theta: float = None,
     device: str = "cpu",
     epoch: int = None,
     loss_threshold: float = 0.2,
@@ -37,7 +43,28 @@ def train(
                 text_emb = text_emb.to(device)
                 prompt_emb = prompt_emb.to(device)
 
-            if isinstance(model, TMoEClipCA):
+            if isinstance(model, (TMoEClipCA_C)):
+                gen_res, prompt_res, gen_mm, item_emb, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
+                img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                cosine_loss = 1 - torch.cosine_similarity(
+                    gen_mm, item_emb[labels], dim=-1
+                )
+                mask = labels != 0
+                cosine_loss = cosine_loss[mask].mean()
+                contra_loss = alpha * img_loss + beta * text_loss + theta * cosine_loss
+                wandb.log(
+                    {
+                        "img_loss": img_loss.item(),
+                        "text_loss": text_loss.item(),
+                        "cosine_loss": cosine_loss.item(),
+                        "gate_mean": gate_mean.item(),
+                    }
+                )
+                rec_w = 1 - alpha - beta - theta
+            elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
                 )
@@ -98,7 +125,7 @@ def train(
 
             t.set_postfix(
                 {"loss": loss.item(), "gm": gate_mean.item()}
-                if isinstance(model, TMoEClipCA)
+                if isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M))
                 else {"loss": loss.item()}
             )
             wandb.log(
@@ -123,6 +150,7 @@ def eval(
     train_data,
     alpha: float = 0.4,
     beta: float = None,
+    theta: float = None,
     device: str = "cpu",
     loss_threshold: float = 0.2,
 ):
@@ -147,7 +175,30 @@ def eval(
                 text_emb = text_emb.to(device)
                 prompt_emb = prompt_emb.to(device)
 
-            if isinstance(model, TMoEClipCA):
+            if isinstance(model, (TMoEClipCA_C)):
+                gen_res, prompt_res, gen_mm, item_emb, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
+                if mode == "valid":
+                    img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                    cosine_loss = 1 - torch.cosine_similarity(
+                        gen_mm, item_emb(labels), dim=-1
+                    )
+                    contra_loss = (
+                        alpha * img_loss + beta * text_loss + theta * cosine_loss
+                    )
+                    wandb.log(
+                        {
+                            "img_loss": img_loss.item(),
+                            "text_loss": text_loss.item(),
+                            "cosine_loss": cosine_loss.item(),
+                            "gate_mean": gate_mean.item(),
+                        }
+                    )
+                    rec_w = 1 - alpha - beta - theta
+
+            elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
                 )
@@ -162,6 +213,7 @@ def eval(
                             "valid_gate_mean": gate_mean.item(),
                         }
                     )
+                    rec_w = 1 - alpha - beta
             elif isinstance(model, MoEClipCA):
                 enc_emb, logits = model(tokens, ori_emb, text_emb)
                 contra_loss = (
@@ -169,6 +221,8 @@ def eval(
                     if mode == "valid"
                     else None
                 )
+                rec_w = 1 - alpha
+
             elif isinstance(model, CLIPCAModel):
                 enc_emb, logits = model(tokens, ori_emb)
                 contra_loss = (
@@ -176,6 +230,8 @@ def eval(
                     if mode == "valid"
                     else None
                 )
+                rec_w = 1 - alpha
+
             elif isinstance(model, ARModel):
                 logits = model(tokens, ori_emb, gen_emb)
             elif isinstance(model, SASRec):
@@ -185,7 +241,7 @@ def eval(
                 rec_loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
                 if isinstance(model, CLIPCAModel):
                     loss = (
-                        (1 - alpha) * rec_loss + contra_loss
+                        rec_w * rec_loss + contra_loss
                         if alpha <= loss_threshold
                         else contra_loss
                     )

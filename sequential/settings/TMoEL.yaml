@@ -2,7 +2,7 @@
 experiment_name: 
 
 # Model settings
-model_name: "TMoE"
+model_name: "TMoEL"
 
 model_dataset:
   train_dataset: "CLIPCADataset"
@@ -17,7 +17,6 @@ model_arguments:
   num_enc_layers: 3    # number of encoder attention layers
   num_enc_heads: 2
   num_gen_layers: 2    # number of generator attention layers
-  num_gen_heads: 2
   max_len: 70             # length of input sequence
   dropout_prob: 0.2       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
@@ -30,10 +29,10 @@ model_arguments:
 lr: 0.0005
 alpha: 0.3 # image loss weight
 beta: 0.3 # prompt loss weight       
-schedule_rate: 0.025
+schedule_rate: 0.03
 loss_threshold : 0.2 
-alpha_threshold: 0.1
-beta_threshold : 0.1
+alpha_threshold: 0.05
+beta_threshold : 0.05
 
 epoch: 120
 batch_size: 128 
@@ -47,4 +46,4 @@ data_repo: "amazon_2014_5_core" #"hm_15_core"
 dataset: 
 data_version: "9915fb18704305458c006fcedc8aec5abf2f1180" #"9d8783944a6c9884913a5fc63e28b407f2210067"
 
-n_cuda: "1"
+n_cuda: "2"
