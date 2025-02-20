@@ -21,9 +21,11 @@ def train(
     optimizer,
     dataloader,
     criterion,
+    scheduler,
     alpha: float = 0.4,
     beta: float = None,
     theta: float = None,
+    rec_weight: float = None,
     device: str = "cpu",
     epoch: int = None,
     loss_threshold: float = 0.2,
@@ -63,7 +65,7 @@ def train(
                         "gate_mean": gate_mean.item(),
                     }
                 )
-                rec_w = 1 - alpha - beta - theta
+                # rec_w = 1 - alpha - beta - theta
             elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
@@ -78,7 +80,7 @@ def train(
                         "gate_mean": gate_mean.item(),
                     }
                 )
-                rec_w = 1 - alpha - beta
+                # rec_w = 1 - alpha - beta
             elif isinstance(model, MoEClipCA):
                 enc_emb, logits = model(tokens, ori_emb, text_emb)
                 img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
@@ -88,7 +90,7 @@ def train(
                     }
                 )
                 contra_loss = alpha * img_loss
-                rec_w = 1 - alpha
+                # rec_w = 1 - alpha
             elif isinstance(model, CLIPCAModel):
                 enc_emb, logits = model(tokens, ori_emb)
                 img_loss = clip_loss(enc_emb, gen_emb, model.logit_scale)
@@ -98,7 +100,7 @@ def train(
                     }
                 )
                 contra_loss = alpha * img_loss
-                rec_w = 1 - alpha
+                # rec_w = 1 - alpha
             elif isinstance(model, ARModel):
                 logits = model(tokens, ori_emb, gen_emb)
             elif isinstance(model, SASRec):
@@ -111,7 +113,8 @@ def train(
             # )
             if isinstance(model, CLIPCAModel):
                 loss = (
-                    (rec_w * rec_loss + contra_loss)
+                    # (rec_w * rec_loss + contra_loss)
+                    (rec_weight * rec_loss + contra_loss)
                     if alpha <= loss_threshold
                     else contra_loss
                 )
@@ -141,6 +144,7 @@ def train(
             loss.backward()
             optimizer.step()
 
+    scheduler.step()
     return total_loss / len(dataloader)
 
 
@@ -153,6 +157,7 @@ def eval(
     alpha: float = 0.4,
     beta: float = None,
     theta: float = None,
+    rec_weight: float = None,
     device: str = "cpu",
     loss_threshold: float = 0.2,
 ):
@@ -200,7 +205,7 @@ def eval(
                             "valid_gate_mean": gate_mean.item(),
                         }
                     )
-                    rec_w = 1 - alpha - beta - theta
+                    # rec_w = 1 - alpha - beta - theta
 
             elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
                 gen_res, prompt_res, logits, gate_mean = model(
@@ -217,7 +222,7 @@ def eval(
                             "valid_gate_mean": gate_mean.item(),
                         }
                     )
-                    rec_w = 1 - alpha - beta
+                    # rec_w = 1 - alpha - beta
             elif isinstance(model, MoEClipCA):
                 enc_emb, logits = model(tokens, ori_emb, text_emb)
                 contra_loss = (
@@ -225,7 +230,7 @@ def eval(
                     if mode == "valid"
                     else None
                 )
-                rec_w = 1 - alpha
+                # rec_w = 1 - alpha
 
             elif isinstance(model, CLIPCAModel):
                 enc_emb, logits = model(tokens, ori_emb)
@@ -234,7 +239,7 @@ def eval(
                     if mode == "valid"
                     else None
                 )
-                rec_w = 1 - alpha
+                # rec_w = 1 - alpha
 
             elif isinstance(model, ARModel):
                 logits = model(tokens, ori_emb, gen_emb)
@@ -245,7 +250,8 @@ def eval(
                 rec_loss = criterion(logits.view(-1, logits.size(-1)), labels.view(-1))
                 if isinstance(model, CLIPCAModel):
                     loss = (
-                        rec_w * rec_loss + contra_loss
+                        # rec_w * rec_loss + contra_loss
+                        (rec_weight * rec_loss + contra_loss)
                         if alpha <= loss_threshold
                         else contra_loss
                     )

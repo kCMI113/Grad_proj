@@ -13,6 +13,7 @@ from huggingface_hub import HfApi, snapshot_download
 # from recbole.model.loss import BPRLoss
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import LambdaLR, StepLR
 
 import wandb
 from src import dataset as DS
@@ -60,7 +61,7 @@ def main(args):
         f"work-{timestamp}_{model_name}_"
         + f'{settings["batch_size"]}_{model_args["hidden_size"]}_{model_args["num_attention_heads"]}_{model_args["num_hidden_layers"]}_{settings["lr"]}_{settings["weight_decay"]}'
         + (
-            f'_{model_args["num_enc_layers"]}_{model_args["num_enc_heads"]}_{settings["loss_threshold"]}_({settings["alpha"]}|{settings["alpha_threshold"]})_{settings["schedule_rate"]}'
+            f'_{model_args["num_enc_layers"]}_{model_args["num_enc_heads"]}_{settings["loss_threshold"]}_({settings["alpha"]}|{settings["alpha_threshold"]})_({settings["rec_weight"]})_{settings["schedule_rate"]}'
             if model_name not in ["SASRec"]
             else ""
         )
@@ -223,8 +224,16 @@ def main(args):
         device=device,
     ).to(device)
 
+    scheduler = None
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
+    if settings["scheduler"] == "LambdaLR":
+        scheduler = LambdaLR(
+            optimizer=optimizer,
+            lr_lambda=lambda epoch: (
+                1 if epoch < 10 else (0.92**epoch if epoch % 5 == 0 else 0.96**epoch)
+            ),
+        )
 
     ############# TRAIN AND EVAL #############
     for i in range(epoch):
@@ -240,22 +249,26 @@ def main(args):
                 if model_name in ["TMoE", "TMoEL", "TMoEM", "TMoEC"]
                 else None
             ),
+            rec_weight=settings["rec_weight"] if model_name not in ["SASRec"] else None,
             theta=(settings["theta"] if model_name in ["TMoEC"] else None),
             device=device,
             epoch=i,
             loss_threshold=(
                 settings["loss_threshold"] if isinstance(model, CLIPCAModel) else None
             ),
+            scheduler=scheduler,
         )
         print(
-            f"EPOCH : {i+1} | TRAIN LOSS : {train_loss}"
+            f"EPOCH : {i+1} | TRAIN LOSS : {train_loss} | LR : {optimizer.param_groups[0]['lr']}"
             + (
                 f'| ALPHA : {settings["alpha"]}'
                 if isinstance(model, CLIPCAModel)
                 else ""
             )
         )
-        wandb.log({"loss": train_loss, "epoch": i + 1})
+        wandb.log(
+            {"loss": train_loss, "epoch": i + 1, "LR": optimizer.param_groups[0]["lr"]}
+        )
 
         if i % settings["valid_step"] == 0:
             print("-------------VALID-------------")
@@ -273,6 +286,9 @@ def main(args):
                     settings["beta"]
                     if model_name in ["TMoE", "TMoEL", "TMoEM", "TMoEC"]
                     else None
+                ),
+                rec_weight=(
+                    settings["rec_weight"] if model_name not in ["SASRec"] else None
                 ),
                 theta=(settings["theta"] if model_name in ["TMoEC"] else None),
                 device=device,
@@ -321,6 +337,9 @@ def main(args):
                     else None
                 ),
                 theta=(settings["theta"] if model_name in ["TMoEC"] else None),
+                rec_weight=(
+                    settings["rec_weight"] if model_name not in ["SASRec"] else None
+                ),
                 loss_threshold=(
                     settings["loss_threshold"]
                     if isinstance(model, CLIPCAModel)
