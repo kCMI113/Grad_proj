@@ -10,6 +10,7 @@ from src.models.TMoEattn import (
     TMoEClipCA_lienar,
     TMoEClipCA_M,
     TMoEClipCA_C,
+    TMoEClipCA_SG,
 )
 from src.models.common import clip_loss
 from src.utils import simple_ndcg_at_k_batch, simple_recall_at_k_batch
@@ -63,6 +64,36 @@ def train(
                         "text_loss": text_loss.item(),
                         "cosine_loss": cosine_loss.item(),
                         "gate_mean": gate_mean.item(),
+                    }
+                )
+                # rec_w = 1 - alpha - beta - theta
+            elif isinstance(model, (TMoEClipCA_SG)):
+                gen_res, prompt_res, topk, item_emb, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
+                img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+
+                topk = topk.unsqueeze(-1)
+                mm_info = torch.stack((gen_emb, prompt_emb), dim=-2)
+                mm_info = torch.gather(
+                    mm_info, dim=2, index=topk.expand(-1, -1, -1, mm_info.size(-1))
+                ).squeeze(-2)
+
+                cosine_loss = 1 - torch.cosine_similarity(
+                    mm_info, item_emb[labels], dim=-1
+                )
+                mask = labels != 0
+                cosine_loss = cosine_loss[mask].mean()
+                contra_loss = alpha * img_loss + beta * text_loss + theta * cosine_loss
+
+                wandb.log(
+                    {
+                        "img_loss": img_loss.item(),
+                        "text_loss": text_loss.item(),
+                        "cosine_loss": cosine_loss.item(),
+                        "gate_mean": gate_mean.item(),
+                        "a_gate_mean": torch.mean(topk.to(torch.float32)).item(),
                     }
                 )
                 # rec_w = 1 - alpha - beta - theta
@@ -144,7 +175,8 @@ def train(
             loss.backward()
             optimizer.step()
 
-    scheduler.step()
+    if scheduler is not None:
+        scheduler.step()
     return total_loss / len(dataloader)
 
 
@@ -206,7 +238,40 @@ def eval(
                         }
                     )
                     # rec_w = 1 - alpha - beta - theta
+            elif isinstance(model, (TMoEClipCA_SG)):
+                gen_res, prompt_res, topk, item_emb, logits, gate_mean = model(
+                    tokens, ori_emb, text_emb
+                )
+                if mode == "valid":
+                    img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
 
+                    topk = topk.unsqueeze(-1)
+                    mm_info = torch.stack((gen_emb, prompt_emb), dim=-2)
+                    mm_info = torch.gather(
+                        mm_info, dim=2, index=topk.expand(-1, -1, -1, mm_info.size(-1))
+                    ).squeeze(-2)
+
+                    cosine_loss = 1 - torch.cosine_similarity(
+                        mm_info, item_emb[labels], dim=-1
+                    )
+                    mask = labels != 0
+                    cosine_loss = cosine_loss[mask].mean()
+                    contra_loss = (
+                        alpha * img_loss + beta * text_loss + theta * cosine_loss
+                    )
+
+                    wandb.log(
+                        {
+                            "valid_img_loss": img_loss.item(),
+                            "valid_text_loss": text_loss.item(),
+                            "valid_cosine_loss": cosine_loss.item(),
+                            "valid_gate_mean": gate_mean.item(),
+                            "valid_a_gate_mean": torch.mean(
+                                topk.to(torch.float32)
+                            ).item(),
+                        }
+                    )
             elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
