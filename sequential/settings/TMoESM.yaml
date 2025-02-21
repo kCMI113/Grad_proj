@@ -11,14 +11,15 @@ model_dataset:
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
-  hidden_size: 128        # hidden size for multi head attention
+  hidden_size: 64        # hidden size for multi head attention
   num_attention_heads: 2  # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
   num_enc_layers: 3    # number of encoder attention layers
   num_enc_heads: 2
   num_gen_layers: 2    # number of generator attention layers
+  num_gen_heads: 2
   max_len: 70             # length of input sequence
-  dropout_prob: 0.2       # dropout probability
+  dropout_prob: 0.3       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
   use_linear: False       # if False. use dotpord for scoring
@@ -26,21 +27,21 @@ model_arguments:
   num_experts: 3            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 
-lr: 0.0005
-alpha: 0.3 # image loss weight
-beta: 0.3 # prompt loss weight  
+lr: 0.0007
+alpha: 0.2 # image loss weight
+beta: 0.2 # prompt loss weight  
 rec_weight : 1     
 
-schedule_rate: 0.03
-loss_threshold : 0.2 
-alpha_threshold: 0.1
-beta_threshold : 0.1
-scheduler : "LambdaLR"
+schedule_rate: 0
+loss_threshold : 1
+alpha_threshold: 0
+beta_threshold : 0
+scheduler : 
 
 
 epoch: 120
 batch_size: 128 
-shuffle: False       # shuffle dataloader
+shuffle: True       # shuffle dataloader
 weight_decay: 0.001 # weight decay for Adam
 num_workers: 8
 valid_step: 3 # number of steps to run validation
@@ -50,4 +51,4 @@ data_repo: "amazon_2014_5_core" #"hm_15_core"
 dataset: 
 data_version: "9915fb18704305458c006fcedc8aec5abf2f1180" #"9d8783944a6c9884913a5fc63e28b407f2210067"
 
-n_cuda: "2"
+n_cuda: "3"

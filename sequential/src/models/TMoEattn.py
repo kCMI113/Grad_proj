@@ -249,7 +249,7 @@ class TMoEClipCA_SM(MoEClipCA):
         )
 
         self.modal_projection = nn.Linear(
-            self.gen_emb_size + self.hidden_size, self.hidden_size
+            self.gen_emb_size + self.text_emb_size + self.hidden_size, self.hidden_size
         )
 
         if not modal_gate and (
