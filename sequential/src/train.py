@@ -4,17 +4,11 @@ from tqdm import tqdm
 
 import wandb
 from src.models.ARattn import ARModel, CLIPCAModel
-from src.models.MoEattn import MoEClipCA
-from src.models.TMoEattn import (
-    TMoEClipCA,
-    TMoEClipCA_lienar,
-    TMoEClipCA_M,
-    TMoEClipCA_C,
-    TMoEClipCA_SG,
-)
 from src.models.common import clip_loss
-from src.utils import simple_ndcg_at_k_batch, simple_recall_at_k_batch
+from src.models.MoEattn import MoEClipCA
 from src.models.SASRec import SASRec
+from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_SG, TMoEClipCA_SM
+from src.utils import simple_ndcg_at_k_batch, simple_recall_at_k_batch
 
 
 def train(
@@ -97,7 +91,7 @@ def train(
                     }
                 )
                 # rec_w = 1 - alpha - beta - theta
-            elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
+            elif isinstance(model, (TMoEClipCA, TMoEClipCA_SM)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
                 )
@@ -160,7 +154,7 @@ def train(
             t.set_postfix(
                 {"loss": loss.item(), "gm": gate_mean.item()}
                 if isinstance(
-                    model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M, TMoEClipCA_C)
+                    model, (TMoEClipCA, TMoEClipCA_SM, TMoEClipCA_C, TMoEClipCA_SG)
                 )
                 else {"loss": loss.item()}
             )
@@ -272,7 +266,7 @@ def eval(
                             ).item(),
                         }
                     )
-            elif isinstance(model, (TMoEClipCA, TMoEClipCA_lienar, TMoEClipCA_M)):
+            elif isinstance(model, (TMoEClipCA, TMoEClipCA_SM)):
                 gen_res, prompt_res, logits, gate_mean = model(
                     tokens, ori_emb, text_emb
                 )

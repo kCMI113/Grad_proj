@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .common import MultiHeadAttention, PositionwiseFeedForward
 from .ARattn import CLIPCAModel
+from .common import MultiHeadAttention, PositionwiseFeedForward
 
 
 class Router(nn.Module):

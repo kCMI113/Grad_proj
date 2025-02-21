@@ -134,7 +134,7 @@ class ARModel(nn.Module):
             .repeat(1, log_seqs.shape[1], 1)
             .unsqueeze(1)
             .to(self.device)
-        )  #autoReg
+        )  # autoReg
 
         if ori_emb.shape[-1] != self.hidden_size:
             ori_emb = self.projection_ori(ori_emb)
