@@ -524,6 +524,7 @@ class TMoEClipCA_C(MoEClipCA):
         num_enc_layers: int = 2,
         num_enc_heads: int = 3,
         num_gen_layers: int = 2,
+        num_gen_heads: int = 2,
         img_emb_size: int = 512,
         text_emb_size: int = 512,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
@@ -573,7 +574,13 @@ class TMoEClipCA_C(MoEClipCA):
 
         self.generator = nn.ModuleList(
             [
-                nn.Linear(self.text_emb_size, self.gen_emb_size)
+                (
+                    SelfAttention(
+                        num_gen_heads, self.gen_emb_size, dropout_prob, hidden_act
+                    )
+                    if num_gen_heads > 0
+                    else nn.Linear(self.text_emb_size, self.gen_emb_size)
+                )
                 for _ in range(num_gen_layers)
             ]
         )
@@ -629,7 +636,10 @@ class TMoEClipCA_C(MoEClipCA):
             enc_in = self.gen_in_proj(enc_in)
 
         for enc in self.generator:
-            enc_in = enc(enc_in)  # modi
+            if isinstance(enc, nn.Linear):
+                enc_in = enc(enc_in)  # modi
+            else:
+                enc_in = enc(enc_in, attn_mask)
 
         gen_emb = enc_in
 
@@ -704,6 +714,7 @@ class TMoEClipCA_SG(MoEClipCA):
         num_enc_layers: int = 2,
         num_enc_heads: int = 3,
         num_gen_layers: int = 2,
+        num_gen_heads: int = 2,
         img_emb_size: int = 512,
         text_emb_size: int = 512,
         hidden_act: Literal["gelu", "mish", "silu"] = "gelu",
@@ -753,7 +764,13 @@ class TMoEClipCA_SG(MoEClipCA):
 
         self.generator = nn.ModuleList(
             [
-                nn.Linear(self.text_emb_size, self.gen_emb_size)
+                (
+                    SelfAttention(
+                        num_gen_heads, self.gen_emb_size, dropout_prob, hidden_act
+                    )
+                    if num_gen_heads > 0
+                    else nn.Linear(self.text_emb_size, self.gen_emb_size)
+                )
                 for _ in range(num_gen_layers)
             ]
         )
@@ -812,7 +829,10 @@ class TMoEClipCA_SG(MoEClipCA):
             enc_in = self.gen_in_proj(enc_in)
 
         for enc in self.generator:
-            enc_in = enc(enc_in)  # modi
+            if isinstance(enc, nn.Linear):
+                enc_in = enc(enc_in)  # modi
+            else:
+                enc_in = enc(enc_in, attn_mask)
 
         gen_emb = enc_in
 

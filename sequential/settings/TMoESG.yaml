@@ -16,7 +16,8 @@ model_arguments:
   num_hidden_layers: 2    # number of transformer layers
   num_enc_layers: 2    # number of encoder attention layers
   num_enc_heads: 4
-  num_gen_layers: 3    # number of generator attention layers
+  num_gen_layers: 2    # number of generator attention layers
+  num_gen_heads: 4     # if head > 0 CA else MLP
   max_len: 70             # length of input sequence
   dropout_prob: 0.3       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
@@ -26,7 +27,7 @@ model_arguments:
   num_experts: 3            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 
-lr: 0.0008
+lr: 0.00065
 alpha: 0.1 # image loss weight
 beta: 0.1 # prompt loss weight  
 theta: 0.2 # cosine loss weight        
@@ -39,10 +40,10 @@ beta_threshold : 0
 scheduler : 
 
 
-epoch: 120
+epoch: 100
 batch_size: 128 
-shuffle: False       # shuffle dataloader
-weight_decay: 0.0008 # weight decay for Adam
+shuffle: True       # shuffle dataloader
+weight_decay: 0.00095 # weight decay for Adam
 num_workers: 8
 valid_step: 3 # number of steps to run validation
 

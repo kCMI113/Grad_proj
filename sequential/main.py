@@ -68,6 +68,11 @@ def main(args):
             else ""
         )
         + (
+            f"_SA"
+            if model_name in ["TMoEC", "TMoESG"] and model_args["num_gen_heads"] > 0
+            else "_MLP"
+        )
+        + (
             f"_({settings['beta']}|{settings['beta_threshold']})"
             if model_name in ["TMoE", "TMoEL", "TMoEM", "TMoEC", "TMoESG"]
             else ""

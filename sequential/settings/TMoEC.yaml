@@ -17,13 +17,14 @@ model_arguments:
   num_enc_layers: 2    # number of encoder attention layers
   num_enc_heads: 4
   num_gen_layers: 1    # number of generator attention layers
+  num_gen_heads: 4     # if head > 0 CA else MLP
   max_len: 70             # length of input sequence
   dropout_prob: 0.3       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
   use_linear: False       # if False. use dotpord for scoring
   loss: 'CE'              # ["CE", "BPR"]
-  num_experts: 2            # num of experts(modality) (id, img, text)
+  num_experts: 3            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 
 lr: 0.0005
