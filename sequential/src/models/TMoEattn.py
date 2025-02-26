@@ -85,7 +85,12 @@ class TMoEClipCA(MoEClipCA):
         )
 
         self.modal_projection = nn.Linear(
-            self.gen_emb_size + self.hidden_size, self.hidden_size
+            (
+                (self.gen_emb_size + self.hidden_size)
+                if self.selected_modal_in
+                else (self.gen_emb_size + self.hidden_size + self.text_emb_size)
+            ),
+            self.hidden_size,
         )
 
         if not modal_gate and (
@@ -270,7 +275,12 @@ class TMoEClipCA_C(MoEClipCA):
         )
 
         self.modal_projection = nn.Linear(
-            self.gen_emb_size + self.hidden_size, self.hidden_size
+            (
+                (self.gen_emb_size + self.hidden_size)
+                if self.selected_modal_in
+                else (self.gen_emb_size + self.hidden_size + self.text_emb_size)
+            ),
+            self.hidden_size,
         )
 
         if not modal_gate and (
@@ -468,7 +478,12 @@ class TMoEClipCA_CO(MoEClipCA):
         )
 
         self.modal_projection = nn.Linear(
-            self.text_emb_size + self.gen_emb_size + self.hidden_size, self.hidden_size
+            (
+                (self.gen_emb_size + self.hidden_size)
+                if self.selected_modal_in
+                else (self.gen_emb_size + self.hidden_size + self.text_emb_size)
+            ),
+            self.hidden_size,
         )
 
         if not modal_gate and (
