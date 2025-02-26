@@ -1,6 +1,5 @@
 import argparse
 import itertools
-
 import yaml
 from main import main
 from src.utils import get_config
@@ -8,8 +7,18 @@ from src.utils import get_config
 
 def update_config(settings, param_dict):
     new_settings = settings.copy()
-    for key, value in param_dict.items():
-        new_settings[key] = value
+
+    if "model_arguments" in new_settings:
+        model_args = new_settings["model_arguments"]
+        for key, value in param_dict.items():
+            if key in model_args:
+                model_args[key] = value
+            else:
+                new_settings[key] = value
+    else:
+        for key, value in param_dict.items():
+            new_settings[key] = value
+
     return new_settings
 
 
