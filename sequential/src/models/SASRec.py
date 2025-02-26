@@ -94,7 +94,11 @@ class SASRec(torch.nn.Module):
         seqs = self.item_emb(torch.tensor(log_seqs).to(self.dev))
         seqs *= self.item_emb.embedding_dim**0.5
         if self.pos_emb:
-            poss = torch.arange(1, log_seqs.shape[1] + 1, device=self.dev).unsqueeze(0).repeat(log_seqs.shape[0], 1)
+            poss = (
+                torch.arange(1, log_seqs.shape[1] + 1, device=self.dev)
+                .unsqueeze(0)
+                .repeat(log_seqs.shape[0], 1)
+            )
             # poss = np.tile(np.arange(1, log_seqs.shape[1] + 1), [log_seqs.shape[0], 1])
             # TODO: directly do tensor = torch.arange(1, xxx, device='cuda') to save extra overheads
             poss *= log_seqs != 0
@@ -109,14 +113,14 @@ class SASRec(torch.nn.Module):
 
         # seqs : batch x seq_len x emb_dim
         for i in range(len(self.attention_layers)):
-            # seqs = torch.transpose(seqs, 0, 1) 
+            # seqs = torch.transpose(seqs, 0, 1)
             Q = self.attention_layernorms[i](seqs)
-            
+
             mha_outputs, _ = self.attention_layers[i](
                 Q, seqs, seqs, attn_mask=attention_mask
             )
             # need_weights=False) this arg do not work?
-            seqs = Q + mha_outputs # residual
+            seqs = Q + mha_outputs  # residual
             # seqs = torch.transpose(seqs, 0, 1)
 
             seqs = self.forward_layernorms[i](seqs)
@@ -131,7 +135,7 @@ class SASRec(torch.nn.Module):
         logits = torch.matmul(
             log_feats, self.item_emb.weight.T
         )  # batch x seq_len x n_item+1
-    
+
         # pos_embs = self.item_emb(torch.tensor(pos_seqs).to(self.dev))
         # neg_embs = self.item_emb(torch.tensor(neg_seqs).to(self.dev))
 

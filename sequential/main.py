@@ -20,7 +20,7 @@ from src import dataset as DS
 from src.models.ARattn import ARModel, CLIPCAModel
 from src.models.MoEattn import MoEClipCA
 from src.models.SASRec import SASRec
-from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_SG, TMoEClipCA_SM
+from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_CO
 from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 
@@ -36,9 +36,8 @@ def main(args):
         "CLIPCA": CLIPCAModel,
         "MoE": MoEClipCA,
         "TMoE": TMoEClipCA,
-        "TMoESM": TMoEClipCA_SM,
         "TMoEC": TMoEClipCA_C,
-        "TMoESG": TMoEClipCA_SG,
+        "TMoECO": TMoEClipCA_CO,
         "SASRec": SASRec,
     }
     seed_everything()
@@ -62,16 +61,22 @@ def main(args):
         )
         + (
             f"_SA"
-            if model_name in ["TMoE", "TMoESM", "TMoESM", "TMoEC", "TMoESG"]
+            if model_name in ["TMoE", "TMoEC", "TMoECO"]
             and model_args["num_gen_heads"] > 0
-            else "_MLP"
+            else ("_MLP" if model_name not in ["SASRec"] else "")
+        )
+        + (
+            f"_Sel"
+            if model_name in ["TMoE", "TMoEC", "TMoECO"]
+            and model_args["selected_modal_in"]
+            else ""
         )
         + (
             f"_({settings['beta']}|{settings['beta_threshold']})"
-            if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
+            if model_name in ["TMoE", "TMoEC", "TMoECO"]
             else ""
         )
-        + (f"_({settings['theta']})" if model_name in ["TMoEC", "TMoESG"] else "")
+        + (f"_({settings['theta']})" if model_name in ["TMoEC", "TMoECO"] else "")
         + (
             "_useLinear"
             if model_name not in ["SASRec"] and model_args["use_linear"]
@@ -80,13 +85,13 @@ def main(args):
         + ("_shuffle" if settings["shuffle"] else "")
         + (
             "_modal_gate"
-            if model_name in ["MoE", "TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
+            if model_name in ["MoE", "TMoE", "TMoEC", "TMoECO"]
             and model_args["modal_gate"]
             else ""
         )
         + (
             f"_{model_args['num_experts']}"
-            if model_name in ["MoE", "TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
+            if model_name in ["MoE", "TMoE", "TMoEC", "TMoECO"]
             and model_args["num_experts"]
             else ""
         )
@@ -157,20 +162,18 @@ def main(args):
     metadata = load_json(f"{path}/uniqued_metadata.json")
     # train_data = torch.load(f"./data/xs/train_data_new_xs.pt")
     test_data = torch.load(f"{path}/uniqued_test_data.pt")
-    valid_data = [v[:-1] for v in test_data]
-    train_data = [v[:-1] for v in valid_data]
     # _parameter["gen_img_emb"] = torch.load(f"./data/xs/gen_emb_new_dict.pt")
-    # _parameter["ori_img_emb"] = torch.load(f"{path}/idx_img_emb_map.pt")
+    # _parameter["img_emb"] = torch.load(f"{path}/idx_img_emb_map.pt")
     # _parameter["text_emb"] = torch.load(f"{path}/idx_text_emb_map.pt")
     if model_name not in ["SASRec"]:
-        _parameter["ori_img_emb"] = torch.load(
+        _parameter["img_emb"] = torch.load(
             f"{path}/idx_img_emb_map{'_'+model_args['img_model'] if model_args['img_model'] != 'fclip' else ''}.pt"
         )
         _parameter["text_emb"] = torch.load(
             f"{path}/idx_text_emb_map{'_'+model_args['text_model'] if model_args['text_model'] != 'fclip' else ''}.pt"
         )
         model_args["text_emb_size"] = _parameter["text_emb"][0].shape[-1]
-        model_args["img_emb_size"] = _parameter["ori_img_emb"][0].shape[-1]
+        model_args["img_emb_size"] = _parameter["img_emb"][0].shape[-1]
 
     _parameter["num_user"] = metadata["num of user"]
     _parameter["num_item"] = metadata["num of item"]
@@ -181,22 +184,20 @@ def main(args):
 
     print("-------------COMPLETE LOAD DATA-------------")
 
-    train_dataset_class_ = getattr(DS, model_dataset["train_dataset"])
-    test_dataset_class_ = getattr(DS, model_dataset["test_dataset"])
+    train_dataset_class_ = getattr(DS, f"{model_dataset}TrainDataset")
+    valid_dataset_class_ = getattr(DS, f"{model_dataset}ValidDataset")
+    test_dataset_class_ = getattr(DS, f"{model_dataset}TestDataset")
 
     train_dataset = train_dataset_class_(
         user_seq=test_data,
-        type="Train",
         **_parameter,
     )
-    valid_dataset = test_dataset_class_(
+    valid_dataset = valid_dataset_class_(
         user_seq=test_data,
-        type="Valid",
         **_parameter,
     )
     test_dataset = test_dataset_class_(
         user_seq=test_data,
-        type="Test",
         **_parameter,
     )
 
@@ -246,12 +247,10 @@ def main(args):
             criterion=criterion,
             alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
             beta=(
-                settings["beta"]
-                if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
-                else None
+                settings["beta"] if model_name in ["TMoE", "TMoEC", "TMoECO"] else None
             ),
             rec_weight=settings["rec_weight"] if model_name not in ["SASRec"] else None,
-            theta=(settings["theta"] if model_name in ["TMoEC", "TMoESG"] else None),
+            theta=(settings["theta"] if model_name in ["TMoEC", "TMoECO"] else None),
             device=device,
             epoch=i,
             loss_threshold=(
@@ -281,18 +280,17 @@ def main(args):
                 mode="valid",
                 dataloader=valid_dataloader,
                 criterion=criterion,
-                train_data=train_data,
                 alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
                 beta=(
                     settings["beta"]
-                    if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
+                    if model_name in ["TMoE", "TMoEC", "TMoECO"]
                     else None
                 ),
                 rec_weight=(
                     settings["rec_weight"] if model_name not in ["SASRec"] else None
                 ),
                 theta=(
-                    settings["theta"] if model_name in ["TMoEC", "TMoESG"] else None
+                    settings["theta"] if model_name in ["TMoEC", "TMoECO"] else None
                 ),
                 device=device,
                 loss_threshold=(
@@ -322,6 +320,11 @@ def main(args):
                     "valid_N10": valid_metrics["N10"],
                     "valid_N20": valid_metrics["N20"],
                     "valid_N40": valid_metrics["N40"],
+                    "valid_M1": valid_metrics["M1"],
+                    "valid_M5": valid_metrics["M5"],
+                    "valid_M10": valid_metrics["M10"],
+                    "valid_M20": valid_metrics["M20"],
+                    "valid_M40": valid_metrics["M40"],
                 }
             )
 
@@ -331,16 +334,15 @@ def main(args):
                 mode="test",
                 dataloader=test_dataloader,
                 criterion=criterion,
-                train_data=valid_data,
                 device=device,
                 alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
                 beta=(
                     settings["beta"]
-                    if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
+                    if model_name in ["TMoE", "TMoEC", "TMoECO"]
                     else None
                 ),
                 theta=(
-                    settings["theta"] if model_name in ["TMoEC", "TMoESG"] else None
+                    settings["theta"] if model_name in ["TMoEC", "TMoECO"] else None
                 ),
                 rec_weight=(
                     settings["rec_weight"] if model_name not in ["SASRec"] else None
@@ -372,7 +374,7 @@ def main(args):
                 )  # update alpha
                 wandb.log({"epoch": i + 1, "alpha": settings["alpha"]})
 
-                if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]:
+                if model_name in ["TMoE", "TMoEC", "TMoECO"]:
                     settings["beta"] = (
                         settings["beta"] - settings["schedule_rate"]
                         if settings["beta"] - settings["schedule_rate"]
@@ -387,15 +389,10 @@ def main(args):
         mode="test",
         dataloader=test_dataloader,
         criterion=criterion,
-        train_data=valid_data,
         device=device,
         alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
-        beta=(
-            settings["beta"]
-            if model_name in ["TMoE", "TMoESM", "TMoEL", "TMoEC", "TMoESG"]
-            else None
-        ),
-        theta=(settings["theta"] if model_name in ["TMoEC", "TMoESG"] else None),
+        beta=(settings["beta"] if model_name in ["TMoE", "TMoEC", "TMoECO"] else None),
+        theta=(settings["theta"] if model_name in ["TMoEC", "TMoECO"] else None),
         loss_threshold=(
             settings["loss_threshold"] if isinstance(model, CLIPCAModel) else None
         ),

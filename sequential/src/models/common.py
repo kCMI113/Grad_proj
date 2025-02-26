@@ -34,6 +34,9 @@ def clip_loss(item_embs, img_embs, logit_scale, epsilon: float = 1e-8) -> torch.
     item_embs = item_embs / item_embs.norm(p=2, dim=-1, keepdim=True)
     logit_scale = logit_scale.exp()
     total_loss = []
+    if len(img_embs.shape) < 3:
+        img_embs = img_embs.unsqueeze(1)
+
     seq_len = img_embs.shape[1]
 
     for i in range(seq_len):

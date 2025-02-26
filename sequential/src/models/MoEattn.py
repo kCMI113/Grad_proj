@@ -125,7 +125,7 @@ class MoEClipCA(CLIPCAModel):
             logit_scale_init_value,
             device,
         )
-
+        self.num_experts = num_experts
         self.text_emb_size = text_emb_size
         self.modal_projection = nn.Linear(
             self.gen_emb_size + self.text_emb_size + self.hidden_size, self.hidden_size

@@ -4,9 +4,8 @@ experiment_name:
 # Model settings
 model_name: "MoE"
 
-model_dataset:
-  train_dataset: "CLIPCADataset"
-  test_dataset: "CLIPCADataset"
+model_dataset: "CLIPCA"
+
 
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]

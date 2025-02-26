@@ -2,28 +2,28 @@
 experiment_name: 
 
 # Model settings
-model_name: "TMoESG"
+model_name: "TMoECO"
 
-model_dataset:
-  train_dataset: "CLIPCADataset"
-  test_dataset: "CLIPCADataset"
+model_dataset: "CLIPCA"
+
 
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
-  hidden_size: 128        # hidden size for multi head attention
+  hidden_size: 64        # hidden size for multi head attention
   num_attention_heads: 4 # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
   num_enc_layers: 2    # number of encoder attention layers
-  num_enc_heads: 4
+  num_enc_heads: 2
   num_gen_layers: 2    # number of generator attention layers
-  num_gen_heads: 4     # if head > 0 CA else MLP
+  num_gen_heads: 0     # if head > 0 CA else MLP
   max_len: 70             # length of input sequence
-  dropout_prob: 0.3       # dropout probability
+  dropout_prob: 0.2       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
   use_linear: False       # if False. use dotpord for scoring
   loss: 'CE'              # ["CE", "BPR"]
+  selected_modal_in : True
   num_experts: 3            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 

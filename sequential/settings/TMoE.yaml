@@ -4,39 +4,38 @@ experiment_name:
 # Model settings
 model_name: "TMoE"
 
-model_dataset:
-  train_dataset: "CLIPCADataset"
-  test_dataset: "CLIPCADataset"
+model_dataset: "CLIPCA"
 
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
-  hidden_size: 128        # hidden size for multi head attention
+  hidden_size: 64        # hidden size for multi head attention
   num_attention_heads: 2  # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
-  num_enc_layers: 3    # number of encoder attention layers
+  num_enc_layers: 2    # number of encoder attention layers
   num_enc_heads: 2
   num_gen_layers: 2    # number of generator attention layers
-  num_gen_heads: 2
+  num_gen_heads: 0
   max_len: 70             # length of input sequence
   dropout_prob: 0.2       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
   use_linear: False       # if False. use dotpord for scoring
   loss: 'CE'              # ["CE", "BPR"]
+  selected_modal_in : True
   num_experts: 2            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 
-lr: 0.0005
-alpha: 0.3 # image loss weight
-beta: 0.3 # prompt loss weight  
+lr: 0.0007
+alpha: 0.2 # image loss weight
+beta: 0.2 # prompt loss weight  
 rec_weight : 1     
 
-schedule_rate: 0.025
-loss_threshold : 0.2 
-alpha_threshold: 0.1
-beta_threshold : 0.1
-scheduler : "LambdaLR"
+schedule_rate: 0
+loss_threshold : 1
+alpha_threshold: 0
+beta_threshold : 0
+scheduler : #"LambdaLR"
 
 epoch: 120
 batch_size: 128 
