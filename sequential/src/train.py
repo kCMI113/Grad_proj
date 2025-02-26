@@ -1,14 +1,13 @@
 import numpy as np
 import torch
-from tqdm import tqdm
-
 import wandb
 from src.models.ARattn import ARModel, CLIPCAModel
 from src.models.common import clip_loss
 from src.models.MoEattn import MoEClipCA
 from src.models.SASRec import SASRec
 from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_CO
-from src.utils import absolute_recall_mrr_ndcg_for_ks, AverageMeterSet
+from src.utils import AverageMeterSet, absolute_recall_mrr_ndcg_for_ks
+from tqdm import tqdm
 
 
 def train(
@@ -190,12 +189,11 @@ def eval(
         for k, v in metrics.items():
             meter_set.update(k, v)
 
-    def _update_dataloader_metrics(self, tqdm_dataloader, meter_set):
-        description_metrics = ["N%d" % k for k in self.metric_ks[:3]] + [
-            "R%d" % k for k in self.metric_ks[:3]
+    def _update_dataloader_metrics(tqdm_dataloader, meter_set):
+        description_metrics = ["N%d" % k for k in [1, 5, 10, 20, 40]] + [
+            "R%d" % k for k in [1, 5, 10, 20, 40]
         ]
         description = "Eval: " + ", ".join(s + " {:.4f}" for s in description_metrics)
-        # description = description.replace("N", "N").replace("R", "R")
         description = description.format(
             *(meter_set[k].avg for k in description_metrics)
         )
