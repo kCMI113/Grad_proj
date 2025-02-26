@@ -219,94 +219,95 @@ def eval(
                     gen_res, prompt_res, gen_mm, item_emb, logits, gate_mean = model(
                         tokens, ori_emb, text_emb
                     )
-                    if mode == "valid":
-                        img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
-                        text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
-                        cosine_loss = 1 - torch.cosine_similarity(
-                            gen_mm, item_emb[labels], dim=-1
-                        )
-                        mask = labels != 0
-                        cosine_loss = cosine_loss[mask].mean()
-                        contra_loss = (
-                            alpha * img_loss + beta * text_loss + theta * cosine_loss
-                        )
-                        wandb.log(
-                            {
-                                "valid_img_loss": img_loss.item(),
-                                "valid_text_loss": text_loss.item(),
-                                "valid_cosine_loss": cosine_loss.item(),
-                                "valid_gate_mean": gate_mean.item(),
-                            }
-                        )
-                        # rec_w = 1 - alpha - beta - theta
+                    # if mode == "valid":
+                    #     img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    #     text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                    #     cosine_loss = (
+                    #         1
+                    #         - torch.cosine_similarity(
+                    #             gen_mm, item_emb[labels], dim=-1
+                    #         ).mean()
+                    #     )
+                    #     contra_loss = (
+                    #         alpha * img_loss + beta * text_loss + theta * cosine_loss
+                    #     )
+                    #     wandb.log(
+                    #         {
+                    #             "valid_img_loss": img_loss.item(),
+                    #             "valid_text_loss": text_loss.item(),
+                    #             "valid_cosine_loss": cosine_loss.item(),
+                    #             "valid_gate_mean": gate_mean.item(),
+                    #         }
+                    #     )
+                    # rec_w = 1 - alpha - beta - theta
                 elif isinstance(model, (TMoEClipCA_CO)):
                     gen_res, prompt_res, topk, item_emb, logits, gate_mean = model(
                         tokens, ori_emb, text_emb
                     )
-                    if mode == "valid":
-                        img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
-                        text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                    # if mode == "valid":
+                    #     img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    #     text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
 
-                        topk = topk.unsqueeze(-1)
-                        mm_info = torch.stack((gen_emb, prompt_emb), dim=-2)
-                        mm_info = torch.gather(
-                            mm_info,
-                            dim=2,
-                            index=topk.expand(-1, -1, -1, mm_info.size(-1)),
-                        ).squeeze(-2)
+                    #     topk = topk[:, -1, :].unsqueeze(-1)
+                    #     mm_info = torch.stack((gen_emb, prompt_emb), dim=-2)
+                    #     mm_info = torch.gather(
+                    #         mm_info,
+                    #         dim=2,
+                    #         index=topk.expand(-1, -1, mm_info.size(-1)),
+                    #     ).squeeze(-2)
 
-                        cosine_loss = 1 - torch.cosine_similarity(
-                            mm_info, item_emb[labels], dim=-1
-                        )
-                        mask = labels != 0
-                        cosine_loss = cosine_loss[mask].mean()
-                        contra_loss = (
-                            alpha * img_loss + beta * text_loss + theta * cosine_loss
-                        )
+                    #     cosine_loss = 1 - torch.cosine_similarity(
+                    #         mm_info, item_emb[labels], dim=-1
+                    #     )
+                    #     mask = labels != 0
+                    #     cosine_loss = cosine_loss[mask].mean()
+                    #     contra_loss = (
+                    #         alpha * img_loss + beta * text_loss + theta * cosine_loss
+                    #     )
 
-                        wandb.log(
-                            {
-                                "valid_img_loss": img_loss.item(),
-                                "valid_text_loss": text_loss.item(),
-                                "valid_cosine_loss": cosine_loss.item(),
-                                "valid_gate_mean": gate_mean.item(),
-                                "valid_a_gate_mean": torch.mean(
-                                    topk.to(torch.float32)
-                                ).item(),
-                            }
-                        )
+                    #     wandb.log(
+                    #         {
+                    #             "valid_img_loss": img_loss.item(),
+                    #             "valid_text_loss": text_loss.item(),
+                    #             "valid_cosine_loss": cosine_loss.item(),
+                    #             "valid_gate_mean": gate_mean.item(),
+                    #             "valid_a_gate_mean": torch.mean(
+                    #                 topk.to(torch.float32)
+                    #             ).item(),
+                    #         }
+                    #     )
                 elif isinstance(model, (TMoEClipCA)):
                     gen_res, prompt_res, logits, gate_mean = model(
                         tokens, ori_emb, text_emb
                     )
-                    if mode == "valid":
-                        img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
-                        text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
-                        contra_loss = alpha * img_loss + beta * text_loss
-                        wandb.log(
-                            {
-                                "valid_img_loss": img_loss.item(),
-                                "valid_text_loss": text_loss.item(),
-                                "valid_gate_mean": gate_mean.item(),
-                            }
-                        )
-                        # rec_w = 1 - alpha - beta
+                    # if mode == "valid":
+                    #     img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
+                    #     text_loss = clip_loss(prompt_res, prompt_emb, model.logit_scale)
+                    #     contra_loss = alpha * img_loss + beta * text_loss
+                    #     wandb.log(
+                    #         {
+                    #             "valid_img_loss": img_loss.item(),
+                    #             "valid_text_loss": text_loss.item(),
+                    #             "valid_gate_mean": gate_mean.item(),
+                    #         }
+                    #     )
+                    # rec_w = 1 - alpha - beta
                 elif isinstance(model, MoEClipCA):
                     enc_emb, logits = model(tokens, ori_emb, text_emb)
-                    contra_loss = (
-                        alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
-                        if mode == "valid"
-                        else None
-                    )
+                    # contra_loss = (
+                    #     alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
+                    #     if mode == "valid"
+                    #     else None
+                    # )
                     # rec_w = 1 - alpha
 
                 elif isinstance(model, CLIPCAModel):
                     enc_emb, logits = model(tokens, ori_emb)
-                    contra_loss = (
-                        alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
-                        if mode == "valid"
-                        else None
-                    )
+                    # contra_loss = (
+                    #     alpha * clip_loss(enc_emb, gen_emb, model.logit_scale)
+                    #     if mode == "valid"
+                    #     else None
+                    # )
                     # rec_w = 1 - alpha
 
                 elif isinstance(model, ARModel):
@@ -318,38 +319,38 @@ def eval(
                 labels = labels.squeeze()
                 if mode == "valid":
                     rec_loss = criterion(logits, labels)
-                    if isinstance(model, CLIPCAModel):
-                        loss = (
-                            # rec_w * rec_loss + contra_loss
-                            (rec_weight * rec_loss + contra_loss)
-                            if alpha <= loss_threshold
-                            else contra_loss
-                        )
-                        wandb.log(
-                            {
-                                "valid_contra_loss": contra_loss.item(),
-                            }
-                        )
-                    else:
-                        loss = rec_loss
+                    # if isinstance(model, CLIPCAModel):
+                    #     loss = (
+                    #         # rec_w * rec_loss + contra_loss
+                    #         (rec_weight * rec_loss + contra_loss)
+                    #         if alpha <= loss_threshold
+                    #         else contra_loss
+                    #     )
+                    #     wandb.log(
+                    #         {
+                    #             "valid_contra_loss": contra_loss.item(),
+                    #         }
+                    #     )
+                    # else:
+                    #     loss = rec_loss
 
-                    t.set_postfix(loss=loss.item())
+                    # t.set_postfix(loss=loss.item())
                     wandb.log(
                         {
-                            "valid_batch_loss": loss.item(),
+                            # "valid_batch_loss": loss.item(),
                             "valid_rec_loss": rec_loss.item(),
                         }
                     )
 
-                    total_loss += loss
+                    # total_loss += loss
 
                 metrics = absolute_recall_mrr_ndcg_for_ks(logits, labels)
                 _update_meter_set(average_meter_set, metrics)
                 _update_dataloader_metrics(t, average_meter_set)
     average_metrics = average_meter_set.averages()
 
-    if mode == "valid":
-        return total_loss / len(dataloader), average_metrics
+    # if mode == "valid":
+    #     return total_loss / len(dataloader), average_metrics
 
     # pred_list = torch.cat(pred_list).tolist()
     return average_metrics

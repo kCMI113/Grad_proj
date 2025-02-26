@@ -273,8 +273,8 @@ def main(args):
         if i % settings["valid_step"] == 0:
             print("-------------VALID-------------")
             (
-                valid_loss,
-                valid_metrics,
+                # valid_loss,
+                valid_metrics
             ) = eval(
                 model=model,
                 mode="valid",
@@ -299,7 +299,7 @@ def main(args):
                     else None
                 ),
             )
-            print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
+            # print(f"EPOCH : {i+1} | VALID LOSS : {valid_loss}")
             print(
                 (
                     f'R1 : {valid_metrics["R1"]} | R5 : {valid_metrics["R5"]} | R10 : {valid_metrics["R10"]} | R20 : {valid_metrics["R20"]} | R40 : {valid_metrics["R40"]} | '
@@ -309,7 +309,7 @@ def main(args):
             wandb.log(
                 {
                     "epoch": i + 1,
-                    "valid_loss": valid_loss,
+                    # "valid_loss": valid_loss,
                     "valid_R1": valid_metrics["R1"],
                     "valid_R5": valid_metrics["R5"],
                     "valid_R10": valid_metrics["R10"],
