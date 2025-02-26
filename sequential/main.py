@@ -6,30 +6,29 @@ import shutil
 import dotenv
 import torch
 import torch.nn as nn
+import wandb
 
 # from accelerate import Accelerator
 from huggingface_hub import HfApi, snapshot_download
-
-# from recbole.model.loss import BPRLoss
-from torch.optim import Adam
-from torch.optim.lr_scheduler import LambdaLR, StepLR
-from torch.utils.data import DataLoader
-
-import wandb
 from src import dataset as DS
 from src.models.ARattn import ARModel, CLIPCAModel
+from src.models.common import EarlyStopping
 from src.models.MoEattn import MoEClipCA
 from src.models.SASRec import SASRec
 from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_CO
 from src.train import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 
+# from recbole.model.loss import BPRLoss
+from torch.optim import Adam
+from torch.optim.lr_scheduler import LambdaLR, StepLR
+from torch.utils.data import DataLoader
+
 torch.autograd.set_detect_anomaly(True)
 
 
-def main(args):
+def main(args, settings):
     ############# SETTING #############
-    setting_yaml_path = f"./settings/{args.config}.yaml"
     timestamp = get_timestamp()
     models = {
         "AR": ARModel,
@@ -44,8 +43,6 @@ def main(args):
     mk_dir("./model")
     mk_dir("./data")
     mk_dir(f"./model/{timestamp}")
-
-    settings = get_config(setting_yaml_path)
 
     model_name: str = settings["model_name"]
     model_args: dict = settings["model_arguments"]
@@ -106,7 +103,7 @@ def main(args):
             else ""
         )
     )
-    shutil.copy(setting_yaml_path, f"./model/{timestamp}/setting.yaml")
+    # shutil.copy(setting_yaml_path, f"./model/{timestamp}/setting.yaml")
 
     ############ SET HYPER PARAMS #############
     ## TRAIN ##
@@ -137,7 +134,7 @@ def main(args):
         mode=os.environ.get("WANDB_MODE"),
     )
     wandb.log(settings)
-    wandb.save(setting_yaml_path)
+    # wandb.save(setting_yaml_path)
 
     ############# LOAD DATASET #############
     # when calling data from huggingface Hub
@@ -229,6 +226,8 @@ def main(args):
     scheduler = None
     criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = Adam(params=model.parameters(), lr=lr, weight_decay=weight_decay)
+    early_stopping = EarlyStopping(patience=10, delta=0)
+
     if settings["scheduler"] == "LambdaLR":
         scheduler = LambdaLR(
             optimizer=optimizer,
@@ -383,6 +382,14 @@ def main(args):
                     )  # update beta
                     wandb.log({"epoch": i + 1, "beta": settings["beta"]})
 
+            if early_stopping(valid_metrics["R10"]):
+                print(f"Early stopping triggered at epoch {i + 1}")
+                break
+            else:
+                print(
+                    f"Epoch {i + 1}: recall@10 = {valid_metrics['R10']}, KEEP GOING!!"
+                )
+
     print("-------------FINAL EVAL-------------")
     test_metrics = eval(
         model=model,
@@ -438,4 +445,7 @@ if __name__ == "__main__":
         default="TMoE",
     )
     args = parser.parse_args()
+    setting_yaml_path = f"./settings/{args.config}.yaml"
+    settings = get_config(setting_yaml_path)
+
     main(args)

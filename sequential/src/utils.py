@@ -87,8 +87,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+import torch.nn.functional as F
 from torch import optim as optim
 
 

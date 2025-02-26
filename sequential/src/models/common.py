@@ -1,9 +1,31 @@
 import math
 from contextlib import suppress
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+class EarlyStopping:
+    def __init__(self, patience=10, delta=0.0):
+        self.patience = patience
+        self.delta = delta
+        self.best_recall = -np.inf
+        self.counter = 0
+        self.stopped_epoch = 0
+
+    def __call__(self, recall):
+        if recall - self.best_recall > self.delta:
+            self.best_recall = recall
+            self.counter = 0
+        else:
+            self.counter += 1
+
+        if self.counter >= self.patience:
+            self.stopped_epoch = self.counter
+            return True
+        return False
 
 
 def get_autocast(precision, device):
