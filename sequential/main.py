@@ -383,11 +383,11 @@ def main(args, settings):
                     wandb.log({"epoch": i + 1, "beta": settings["beta"]})
 
             if early_stopping(valid_metrics["R10"]):
-                print(f"Early stopping triggered at epoch {i + 1}")
+                print(f"\033[43mEARLY STOPPED!!\033[0m triggered at epoch {i + 1}")
                 break
             else:
                 print(
-                    f"Epoch {i + 1}: recall@10 = {valid_metrics['R10']}, KEEP GOING!!"
+                    f"\033[43mKEEP GOING!!\033[0m Epoch {i + 1}: recall@10 = {valid_metrics['R10']}"
                 )
 
     print("-------------FINAL EVAL-------------")
