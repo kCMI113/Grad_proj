@@ -47,4 +47,4 @@ if __name__ == "__main__":
     for param_values in param_combinations:
         param_dict = dict(zip(param_keys, param_values))
         updated_settings = update_config(base_settings, param_dict)
-        main(args, updated_settings)
+        main(updated_settings)

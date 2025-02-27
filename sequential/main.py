@@ -24,10 +24,10 @@ from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR, StepLR
 from torch.utils.data import DataLoader
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
-def main(args, settings):
+def main(settings):
     ############# SETTING #############
     timestamp = get_timestamp()
     models = {
@@ -448,4 +448,4 @@ if __name__ == "__main__":
     setting_yaml_path = f"./settings/{args.config}.yaml"
     settings = get_config(setting_yaml_path)
 
-    main(args)
+    main(settings)
