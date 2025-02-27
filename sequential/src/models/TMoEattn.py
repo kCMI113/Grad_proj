@@ -592,6 +592,7 @@ class TMoEClipCA_CO(MoEClipCA):
 
         _, attn_topk = self.attn_gate(mm_info)  # 0: img, 1:text
 
+        projected_item_emb = self.item_emb.weight
         if self.hidden_size != self.gen_emb_size:
             projected_item_emb = self.proj(self.item_emb.weight)
 
