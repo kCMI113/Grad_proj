@@ -229,7 +229,10 @@ def main(settings):
     early_stopping = EarlyStopping(patience=10, delta=0)
 
     if settings["scheduler"] == "LambdaLR":
-        scheduler = LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 0.97**epoch)
+        scheduler = LambdaLR(
+            optimizer=optimizer,
+            lr_lambda=lambda epoch: settings["scheduler_rate"] ** epoch,
+        )
 
     ############# TRAIN AND EVAL #############
     for i in range(epoch):
@@ -358,8 +361,8 @@ def main(settings):
 
             if isinstance(model, CLIPCAModel):
                 settings["alpha"] = (
-                    settings["alpha"] - settings["schedule_rate"]
-                    if settings["alpha"] - settings["schedule_rate"]
+                    (settings["alpha"] - settings["schedule_rate"])
+                    if (settings["alpha"] - settings["schedule_rate"])
                     > settings["alpha_threshold"]
                     else settings["alpha_threshold"]
                 )  # update alpha
@@ -367,8 +370,8 @@ def main(settings):
 
             if model_name in ["TMoE", "TMoEC", "TMoECO"]:
                 settings["beta"] = (
-                    settings["beta"] - settings["schedule_rate"]
-                    if settings["beta"] - settings["schedule_rate"]
+                    (settings["beta"] - settings["schedule_rate"])
+                    if (settings["beta"] - settings["schedule_rate"])
                     > settings["beta_threshold"]
                     else settings["beta_threshold"]
                 )  # update beta
@@ -376,8 +379,8 @@ def main(settings):
 
             if model_name in ["TMoEC", "TMoECO"]:
                 settings["theta"] = (
-                    settings["theta"] - settings["schedule_rate"]
-                    if settings["theta"] - settings["schedule_rate"]
+                    (settings["theta"] - settings["schedule_rate"])
+                    if (settings["theta"] - settings["schedule_rate"])
                     > settings["theta_threshold"]
                     else settings["theta_threshold"]
                 )  # update beta

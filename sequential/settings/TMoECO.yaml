@@ -39,7 +39,7 @@ alpha_threshold: 0.05
 beta_threshold : 0.05
 theta_threshold : 0.05
 scheduler : "LambdaLR"
-
+scheduler_rate : 0.96
 
 epoch: 70
 batch_size: 128 
@@ -53,4 +53,4 @@ data_repo: "amazon_2014_5_core" #"hm_15_core"
 dataset: 
 data_version: "9915fb18704305458c006fcedc8aec5abf2f1180" #"9d8783944a6c9884913a5fc63e28b407f2210067"
 
-n_cuda: "3"
+n_cuda: "0"

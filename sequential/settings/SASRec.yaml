@@ -18,6 +18,7 @@ model_arguments:
  
 lr: 0.0005
 scheduler : #"LambdaLR"
+scheduler_rate : 0.96
 
 epoch: 500
 batch_size: 128 
