@@ -36,6 +36,7 @@ schedule_rate: 0.08
 loss_threshold : 1
 alpha_threshold: 0.05
 beta_threshold : 0.05
+theta_threshold : 0.05
 scheduler : "LambdaLR"
 
 

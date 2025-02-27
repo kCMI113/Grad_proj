@@ -357,9 +357,6 @@ def main(settings):
             wandb.log(test_metrics)
 
             if isinstance(model, CLIPCAModel):
-                if settings["alpha"] <= settings["schedule_rate"]:
-                    settings["schedule_rate"] /= 10
-
                 settings["alpha"] = (
                     settings["alpha"] - settings["schedule_rate"]
                     if settings["alpha"] - settings["schedule_rate"]
@@ -368,21 +365,30 @@ def main(settings):
                 )  # update alpha
                 wandb.log({"epoch": i + 1, "alpha": settings["alpha"]})
 
-                if model_name in ["TMoE", "TMoEC", "TMoECO"]:
-                    settings["beta"] = (
-                        settings["beta"] - settings["schedule_rate"]
-                        if settings["beta"] - settings["schedule_rate"]
-                        > settings["beta_threshold"]
-                        else settings["beta_threshold"]
-                    )  # update beta
-                    wandb.log({"epoch": i + 1, "beta": settings["beta"]})
+            if model_name in ["TMoE", "TMoEC", "TMoECO"]:
+                settings["beta"] = (
+                    settings["beta"] - settings["schedule_rate"]
+                    if settings["beta"] - settings["schedule_rate"]
+                    > settings["beta_threshold"]
+                    else settings["beta_threshold"]
+                )  # update beta
+                wandb.log({"epoch": i + 1, "beta": settings["beta"]})
+
+            if model_name in ["TMoEC", "TMoECO"]:
+                settings["theta"] = (
+                    settings["theta"] - settings["schedule_rate"]
+                    if settings["theta"] - settings["schedule_rate"]
+                    > settings["theta_threshold"]
+                    else settings["theta_threshold"]
+                )  # update beta
+                wandb.log({"epoch": i + 1, "theta": settings["theta"]})
 
             if early_stopping(valid_metrics["R10"]):
-                print(f"\033[43mEARLY STOPPED!!\033[0m triggered at epoch {i + 1}")
+                print(f"\033[43mEARLY STOPPED!!\033[0m \ntriggered at epoch {i + 1}")
                 break
             else:
                 print(
-                    f"\033[43mKEEP GOING!!\033[0m Epoch {i + 1}: recall@10 = {valid_metrics['R10']}"
+                    f"\033[43mKEEP GOING!!\033[0m \nEpoch {i + 1}: recall@10 = {valid_metrics['R10']}"
                 )
 
     print("-------------FINAL EVAL-------------")

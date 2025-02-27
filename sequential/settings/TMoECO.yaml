@@ -10,40 +10,41 @@ model_dataset: "CLIPCA"
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
-  hidden_size: 64        # hidden size for multi head attention
-  num_attention_heads: 4 # number of heads for multi head attention
+  hidden_size: 512        # hidden size for multi head attention
+  num_attention_heads: 8 # number of heads for multi head attention
   num_hidden_layers: 2    # number of transformer layers
   num_enc_layers: 2    # number of encoder attention layers
-  num_enc_heads: 2
+  num_enc_heads: 8
   num_gen_layers: 2    # number of generator attention layers
   num_gen_heads: 0     # if head > 0 CA else MLP
   max_len: 70             # length of input sequence
-  dropout_prob: 0.2       # dropout probability
+  dropout_prob: 0.3       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
   use_linear: False       # if False. use dotpord for scoring
   loss: 'CE'              # ["CE", "BPR"]
-  selected_modal_in : True
+  selected_modal_in : False
   num_experts: 3            # num of experts(modality) (id, img, text)
   modal_gate: True       # vison text modal gate
 
-lr: 0.00065
-alpha: 0.1 # image loss weight
-beta: 0.1 # prompt loss weight  
-theta: 0.2 # cosine loss weight        
+lr: 0.001
+alpha: 0.5 # image loss weight
+beta: 0.5 # prompt loss weight  
+theta: 0.5 # cosine loss weight        
 rec_weight : 1
 
-schedule_rate: 0
-loss_threshold : 0.25 
-alpha_threshold: 0
-beta_threshold : 0
-scheduler : 
+schedule_rate: 0.08
+loss_threshold : 1
+alpha_threshold: 0.05
+beta_threshold : 0.05
+theta_threshold : 0.05
+scheduler : "LambdaLR"
 
 
-epoch: 100
+epoch: 70
 batch_size: 128 
 shuffle: True       # shuffle dataloader
-weight_decay: 0.00095 # weight decay for Adam
+weight_decay: 0.0008 # weight decay for Adam
 num_workers: 8
 valid_step: 3 # number of steps to run validation
 
