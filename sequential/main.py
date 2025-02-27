@@ -229,12 +229,7 @@ def main(settings):
     early_stopping = EarlyStopping(patience=10, delta=0)
 
     if settings["scheduler"] == "LambdaLR":
-        scheduler = LambdaLR(
-            optimizer=optimizer,
-            lr_lambda=lambda epoch: (
-                1 if epoch < 10 else (0.92**epoch if epoch % 5 == 0 else 0.96**epoch)
-            ),
-        )
+        scheduler = LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 0.97**epoch)
 
     ############# TRAIN AND EVAL #############
     for i in range(epoch):
@@ -410,24 +405,24 @@ def main(settings):
             f'N1 : {test_metrics["N1"]} | N5 : {test_metrics["N5"]} | N10 : {test_metrics["N10"]} | N20 : {test_metrics["N20"]} | N40 : {test_metrics["N40"]}'
         )
     )
-    print("#################### SAVE MODEL CHECKPOINT ####################")
-    model_save_path = f"model/{timestamp}/{settings['experiment_name']}"
-    if not os.path.exists(model_save_path):
-        os.makedirs(model_save_path)
-    torch.save(model.state_dict(), f"{model_save_path}/final_weights.pt")
-    wandb.save(f"model/{model_save_path}/final_weights.pt")
-    # Upload to Huggingface Hub
+    # print("#################### SAVE MODEL CHECKPOINT ####################")
+    # model_save_path = f"model/{timestamp}/{settings['experiment_name']}"
+    # if not os.path.exists(model_save_path):
+    #     os.makedirs(model_save_path)
+    # torch.save(model.state_dict(), f"{model_save_path}/final_weights.pt")
+    # wandb.save(f"model/{model_save_path}/final_weights.pt")
+    # # Upload to Huggingface Hub
 
-    api = HfApi()
-    api.upload_folder(
-        folder_path=model_save_path,
-        repo_id="SLKpnu/mmp_fashion",
-        path_in_repo=model_save_path.split("/")[1],
-        commit_message=f"{model_name}_{model_save_path.split('/')[1]} | run_name : "
-        + settings["experiment_name"],
-        repo_type="model",
-    )
-    wandb.log(test_metrics)
+    # api = HfApi()
+    # api.upload_folder(
+    #     folder_path=model_save_path,
+    #     repo_id="SLKpnu/mmp_fashion",
+    #     path_in_repo=model_save_path.split("/")[1],
+    #     commit_message=f"{model_name}_{model_save_path.split('/')[1]} | run_name : "
+    #     + settings["experiment_name"],
+    #     repo_type="model",
+    # )
+    # wandb.log(test_metrics)
 
     ############ WANDB FINISH #############
     wandb.finish()
