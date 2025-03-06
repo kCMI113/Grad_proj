@@ -92,18 +92,19 @@ import torch.nn.functional as F
 from torch import optim as optim
 
 
-def ndcg(scores, labels, k):
-    scores = scores.cpu()
-    labels = labels.cpu()
-    rank = (-scores).argsort(dim=1)
-    cut = rank[:, :k]
-    hits = labels.gather(1, cut)
-    position = torch.arange(2, 2 + k)
-    weights = 1 / torch.log2(position.float())
-    dcg = (hits.float() * weights).sum(1)
-    idcg = torch.Tensor([weights[: min(int(n), k)].sum() for n in labels.sum(1)])
-    ndcg = dcg / idcg
-    return ndcg.mean()
+def modi_absolute_recall_mrr_ndcg_for_ks(scores, labels, ks=[1, 5, 10, 20, 40]):
+    metrics = {}
+    rank = (
+        (-scores).argsort(dim=-1).argsort(dim=-1)[torch.arange(scores.size(0)), labels]
+    )
+
+    for k in sorted(ks, reverse=True):
+        metrics["R%d" % k] = (sum(rank < k) / labels.size(0)).item()
+        metrics["N%d" % k] = torch.mean(
+            torch.where(rank < k, 1 / torch.log2(rank + 2), torch.tensor(0.0))
+        ).item()
+
+    return metrics
 
 
 def absolute_recall_mrr_ndcg_for_ks(scores, labels, ks=[1, 5, 10, 20, 40]):
