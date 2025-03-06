@@ -231,7 +231,9 @@ def main(settings):
     if settings["scheduler"] == "LambdaLR":
         scheduler = LambdaLR(
             optimizer=optimizer,
-            lr_lambda=lambda epoch: settings["scheduler_rate"] ** epoch,
+            lr_lambda=lambda epoch: (
+                settings["scheduler_rate"] ** epoch if epoch > 10 else 1
+            ),
         )
 
     ############# TRAIN AND EVAL #############
@@ -317,11 +319,6 @@ def main(settings):
                     "valid_N10": valid_metrics["N10"],
                     "valid_N20": valid_metrics["N20"],
                     "valid_N40": valid_metrics["N40"],
-                    "valid_M1": valid_metrics["M1"],
-                    "valid_M5": valid_metrics["M5"],
-                    "valid_M10": valid_metrics["M10"],
-                    "valid_M20": valid_metrics["M20"],
-                    "valid_M40": valid_metrics["M40"],
                 }
             )
 
