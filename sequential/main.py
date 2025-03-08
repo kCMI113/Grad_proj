@@ -16,7 +16,9 @@ from src.models.common import EarlyStopping
 from src.models.MoEattn import MoEClipCA
 from src.models.SASRec import SASRec
 from src.models.TMoEattn import TMoEClipCA, TMoEClipCA_C, TMoEClipCA_CO
-from src.train import eval, train
+
+# from src.train import eval, train
+from src.train_modi import eval, train
 from src.utils import get_config, get_timestamp, load_json, mk_dir, seed_everything
 
 # from recbole.model.loss import BPRLoss
@@ -232,7 +234,9 @@ def main(settings):
         scheduler = LambdaLR(
             optimizer=optimizer,
             lr_lambda=lambda epoch: (
-                settings["scheduler_rate"] ** epoch if epoch > 10 else 1
+                settings["scheduler_rate"] ** epoch
+                if (not settings["static_epoch"])
+                else (1 if epoch <= 10 else settings["scheduler_rate"] ** epoch)
             ),
         )
 
