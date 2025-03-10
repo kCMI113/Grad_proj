@@ -16,7 +16,7 @@ model_arguments:
   num_enc_heads: 8
   num_gen_layers: 2    # number of generator attention layers
   num_gen_heads: 0
-  max_len: 50             # length of input sequence
+  max_len: 70             # length of input sequence
   dropout_prob: 0.3       # dropout probability
   hidden_act: "gelu"      # Activation function for attention, mlp
   pos_emb: True          # True if using positional embedding
@@ -36,11 +36,12 @@ loss_threshold : 1
 alpha_threshold: 0.05
 beta_threshold : 0.05
 scheduler : "LambdaLR"
+static_epoch : False
 scheduler_rate : 0.96
 
-epoch: 70
+epoch: 30
 batch_size: 128 
-shuffle: True       # shuffle dataloader
+shuffle: False       # shuffle dataloader
 weight_decay: 0.0008 # weight decay for Adam
 num_workers: 8
 valid_step: 3 # number of steps to run validation

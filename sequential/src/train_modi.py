@@ -26,6 +26,7 @@ def train(
 ):
     model.train()
     total_loss = 0
+    attn_gate = [0, 0, 0]  # item, img, text
 
     with tqdm(dataloader) as t:
         for tokens, labels, *args in t:
@@ -91,7 +92,7 @@ def train(
                 )
                 # rec_w = 1 - alpha - beta - theta
             elif isinstance(model, (TMoEClipCA)):
-                gen_res, prompt_res, logits, gate_mean = model(
+                gen_res, prompt_res, logits, gate_mean, attn_gate_cnt = model(
                     tokens, ori_emb, text_emb
                 )
                 img_loss = clip_loss(gen_res, gen_emb, model.logit_scale)
@@ -102,8 +103,21 @@ def train(
                         "img_loss": img_loss.item(),
                         "text_loss": text_loss.item(),
                         "gate_mean": gate_mean.item(),
+                        "attn_gate_item": (
+                            0 if 0 not in attn_gate_cnt.keys() else attn_gate_cnt[0]
+                        ),
+                        "attn_gate_img": (
+                            0 if 1 not in attn_gate_cnt.keys() else attn_gate_cnt[1]
+                        ),
+                        "attn_gate_text": (
+                            0 if 2 not in attn_gate_cnt.keys() else attn_gate_cnt[2]
+                        ),
                     }
                 )
+                attn_gate[0] += 0 if 0 not in attn_gate_cnt.keys() else attn_gate_cnt[0]
+                attn_gate[1] += 0 if 1 not in attn_gate_cnt.keys() else attn_gate_cnt[1]
+                attn_gate[2] += 0 if 2 not in attn_gate_cnt.keys() else attn_gate_cnt[2]
+
                 # rec_w = 1 - alpha - beta
             elif isinstance(model, MoEClipCA):
                 enc_emb, logits = model(tokens, ori_emb, text_emb)
@@ -168,6 +182,16 @@ def train(
 
     if scheduler is not None:
         scheduler.step()
+
+    if sum(attn_gate) != 0:
+        wandb.log(
+            {
+                "epoch": epoch + 1,
+                "epoch_attn_gate_item": attn_gate[0],
+                "epoch_attn_gate_img": attn_gate[1],
+                "epoch_attn_gate_text": attn_gate[2],
+            }
+        )
     return total_loss / len(dataloader)
 
 
@@ -176,6 +200,7 @@ def eval(
     mode,
     dataloader,
     criterion,
+    epoch,
     alpha: float = 0.4,
     beta: float = None,
     theta: float = None,
@@ -201,6 +226,7 @@ def eval(
 
     total_loss = 0
     average_meter_set = AverageMeterSet()
+    all_logits = None
 
     with torch.no_grad():
         with tqdm(dataloader) as t:
@@ -277,7 +303,7 @@ def eval(
                     #         }
                     #     )
                 elif isinstance(model, (TMoEClipCA)):
-                    gen_res, prompt_res, logits, gate_mean = model(
+                    gen_res, prompt_res, logits, gate_mean, attn_gate_cnt = model(
                         tokens, ori_emb, text_emb
                     )
                     # if mode == "valid":
@@ -346,10 +372,19 @@ def eval(
 
                     # total_loss += loss
 
+                sorted_tensor, _ = torch.sort(logits, dim=-1, descending=True)
+                top_40 = sorted_tensor[:, :40]
+
+                if all_logits is None:
+                    all_logits = top_40
+                else:
+                    all_logits = torch.cat((all_logits, top_40), dim=0)
+
                 metrics = modi_absolute_recall_mrr_ndcg_for_ks(logits, labels)
                 _update_meter_set(average_meter_set, metrics)
                 _update_dataloader_metrics(t, average_meter_set)
     average_metrics = average_meter_set.averages()
+    torch.save(all_logits, f"./logits/top_40_logits_epoch:{epoch}_mode:{mode}.pt")
 
     # if mode == "valid":
     #     return total_loss / len(dataloader), average_metrics

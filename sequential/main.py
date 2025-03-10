@@ -281,6 +281,7 @@ def main(settings):
             ) = eval(
                 model=model,
                 mode="valid",
+                epoch=i,
                 dataloader=valid_dataloader,
                 criterion=criterion,
                 alpha=settings["alpha"] if isinstance(model, CLIPCAModel) else None,
@@ -330,6 +331,7 @@ def main(settings):
             test_metrics = eval(
                 model=model,
                 mode="test",
+                epoch=i,
                 dataloader=test_dataloader,
                 criterion=criterion,
                 device=device,
@@ -399,6 +401,7 @@ def main(settings):
     test_metrics = eval(
         model=model,
         mode="test",
+        epoch=i,
         dataloader=test_dataloader,
         criterion=criterion,
         device=device,

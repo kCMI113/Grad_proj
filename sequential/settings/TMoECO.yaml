@@ -6,7 +6,6 @@ model_name: "TMoECO"
 
 model_dataset: "CLIPCA"
 
-
 model_arguments:
   text_model : "fclip"       # ["sb","fclip", "clip"]
   img_model : "fclip"       # ["fclip", "clip"]
@@ -29,16 +28,17 @@ model_arguments:
 
 lr: 0.001
 alpha: 0.5 # image loss weight
-beta: 0.5 # prompt loss weight  
-theta: 0.5 # cosine loss weight        
+beta: 0.4 # prompt loss weight  
+theta: 0.3 # cosine loss weight        
 rec_weight : 1
 
 schedule_rate: 0.08
 loss_threshold : 1
 alpha_threshold: 0.05
-beta_threshold : 0.05
-theta_threshold : 0.05
+beta_threshold : 0.04
+theta_threshold : 0.01
 scheduler : "LambdaLR"
+static_epoch : False
 scheduler_rate : 0.96
 
 epoch: 70

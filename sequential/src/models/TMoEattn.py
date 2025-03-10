@@ -183,7 +183,10 @@ class TMoEClipCA(MoEClipCA):
             mm_info = self.fuser(mm_info)
 
         for block in self.blocks:
-            mm_info = block(concated_input, mm_info, attn_mask)
+            mm_info, attn_top_k_idx = block(concated_input, mm_info, attn_mask)
+
+        uniq_idx, cnts = torch.unique(attn_top_k_idx, return_counts=True)
+        attn_gate_cnt = {idx.item(): cnts.item() for idx, cnts in zip(uniq_idx, cnts)}
 
         layer_out = (
             self.out(mm_info)
@@ -197,8 +200,9 @@ class TMoEClipCA(MoEClipCA):
                 prompt_res,
                 layer_out,
                 torch.mean(top_k_idx.to(torch.float32)),
+                attn_gate_cnt,
             )
-        return gen_emb, prompt_res, layer_out, torch.tensor([-1])
+        return gen_emb, prompt_res, layer_out, torch.tensor([-1]), attn_gate_cnt
 
 
 class TMoEClipCA_C(MoEClipCA):

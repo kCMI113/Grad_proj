@@ -84,7 +84,7 @@ class MoEAttenBlock(nn.Module):
         #     torch.sum(gate_scores * selected_expert_outputs, dim=-1) + ln_img_ca_out
         # )  # skip-connection
         moe_output = selected_expert_outputs.squeeze(-2) + ln_ca_out  # skip-connection
-        return moe_output
+        return moe_output, top_k_idx
 
 
 class MoEClipCA(CLIPCAModel):
